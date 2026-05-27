@@ -41,7 +41,7 @@ const SECTIONS = [
   },
   {
     title: '10. Contact Us',
-    body: `If you have questions or concerns about this Privacy Policy, please contact our Privacy Team at privacy@arvanarentals.com or write to us at Arvana Rentals, Inc., 1234 Market Street, Suite 800, San Francisco, CA 94103.`,
+    body: `If you have questions or concerns about this Privacy Policy, please contact our Privacy Team at privacy@arvanarentals.com or write to us at Arvana Rentals, Inc., 1200 Brickell Avenue, Suite 500, Miami, FL 33131.`,
   },
 ];
 

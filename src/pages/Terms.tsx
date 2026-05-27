@@ -37,7 +37,7 @@ const SECTIONS = [
   },
   {
     title: '9. Dispute Resolution',
-    body: `Any dispute arising from these Terms or your use of the Services will be resolved through binding arbitration, except for claims that may be brought in small claims court. You waive your right to participate in a class action lawsuit. These Terms are governed by the laws of the State of California, without regard to conflict of law principles.`,
+    body: `Any dispute arising from these Terms or your use of the Services will be resolved through binding arbitration, except for claims that may be brought in small claims court. You waive your right to participate in a class action lawsuit. These Terms are governed by the laws of the State of Florida, without regard to conflict of law principles.`,
   },
   {
     title: '10. Limitation of Liability',
@@ -45,7 +45,7 @@ const SECTIONS = [
   },
   {
     title: '11. Contact',
-    body: `If you have any questions about these Terms of Service, please contact us at legal@arvanarentals.com or at Arvana Rentals, Inc., 1234 Market Street, Suite 800, San Francisco, CA 94103.`,
+    body: `If you have any questions about these Terms of Service, please contact us at legal@arvanarentals.com or at Arvana Rentals, Inc., 1200 Brickell Avenue, Suite 500, Miami, FL 33131.`,
   },
 ];
 
