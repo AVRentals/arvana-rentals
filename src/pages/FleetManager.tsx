@@ -162,6 +162,14 @@ const FleetManager: React.FC = () => {
   const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
   const [checkoutFields, setCheckoutFields] = useState<CustomCheckoutField[]>([]);
   const [staff, setStaff] = useState<Profile[]>([]);
+  // NOTE: these must stay above the early `if (!unlocked) / if (loading) return`
+  // statements below — React hooks can't be called conditionally, and putting
+  // them after an early return caused a white-screen crash once loading flipped
+  // from true to false (different number of hooks fired between renders).
+  const [newCoupon, setNewCoupon] = useState({ code: '', discount_type: 'percent' as 'percent' | 'fixed', discount_value: '', max_uses: '', expires_at: '' });
+  const [newField, setNewField] = useState({ label: '', field_type: 'text' as 'text' | 'select' | 'checkbox', options: '', is_required: false });
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffName, setStaffName] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -288,7 +296,6 @@ const FleetManager: React.FC = () => {
   };
 
   // ── Coupons ──
-  const [newCoupon, setNewCoupon] = useState({ code: '', discount_type: 'percent' as 'percent' | 'fixed', discount_value: '', max_uses: '', expires_at: '' });
   const handleCreateCoupon = async () => {
     if (!newCoupon.code || !newCoupon.discount_value) { toast.error('Enter a code and discount value'); return; }
     const payload = {
@@ -353,7 +360,6 @@ const FleetManager: React.FC = () => {
   };
 
   // ── Custom checkout fields ──
-  const [newField, setNewField] = useState({ label: '', field_type: 'text' as 'text' | 'select' | 'checkbox', options: '', is_required: false });
   const handleAddField = async () => {
     if (!newField.label) { toast.error('Enter a field label'); return; }
     const payload = {
@@ -395,8 +401,6 @@ const FleetManager: React.FC = () => {
   };
 
   // ── Staff accounts ──
-  const [staffEmail, setStaffEmail] = useState('');
-  const [staffName, setStaffName] = useState('');
   const handleInviteStaff = async () => {
     if (!isSupabaseConfigured) { toast.error('Connect Supabase to invite real staff logins'); return; }
     if (!staffEmail) { toast.error('Enter an email address'); return; }
