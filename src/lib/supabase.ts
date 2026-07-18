@@ -1,9 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
+import { sampleCars, sampleHosts } from '@/data/sampleData';
+import type { Car } from '@/types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 
+export const isSupabaseConfigured = Boolean(
+  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// The single host UUID, once you've created your real Supabase auth user
+// and pasted the ID here. Used to gate the /admin route and as a fallback
+// host_id when Supabase isn't configured yet.
+export const DANIEL_HOST_ID = import.meta.env.VITE_HOST_ID || 'host-daniel';
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || '17.mateo@gmail.com';
+
+// Fetch real cars from Supabase; silently fall back to the local fleet data
+// (sampleCars) if Supabase isn't set up yet or the query fails. This means
+// the site always shows Daniel's real 2 cars, with or without a live backend.
+export const getCarsWithFallback = async (): Promise<Car[]> => {
+  if (!isSupabaseConfigured) return sampleCars;
+  try {
+    const { data, error } = await getCars();
+    if (error || !data || data.length === 0) return sampleCars;
+    return data as unknown as Car[];
+  } catch {
+    return sampleCars;
+  }
+};
+
+export const getCarByIdWithFallback = async (carId: string): Promise<Car | null> => {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await getCarById(carId);
+      if (!error && data) return data as unknown as Car;
+    } catch { /* fall through to sample data */ }
+  }
+  return sampleCars.find(c => c.id === carId) || null;
+};
+
+export { sampleHosts };
 
 // Auth helpers
 export const signUp = async (email: string, password: string, fullName: string, isHost: boolean) => {
@@ -164,6 +202,48 @@ export const updateBookingStatus = async (bookingId: string, status: string) => 
   return { data, error };
 };
 
+// Stripe (via Supabase Edge Functions — see supabase/functions/)
+export const createRentCheckout = async (bookingId: string) => {
+  const { data, error } = await supabase.functions.invoke('create-rent-checkout', { body: { bookingId } });
+  return { data, error };
+};
+
+export const createDepositCheckout = async (bookingId: string, depositAmount?: number) => {
+  const { data, error } = await supabase.functions.invoke('create-deposit-checkout', { body: { bookingId, depositAmount } });
+  return { data, error };
+};
+
+export const createIdentitySession = async (bookingId: string) => {
+  const { data, error } = await supabase.functions.invoke('create-identity-session', { body: { bookingId } });
+  return { data, error };
+};
+
+export const depositAction = async (bookingId: string, action: 'release' | 'capture_full' | 'capture_partial', amount?: number) => {
+  const { data, error } = await supabase.functions.invoke('deposit-action', { body: { bookingId, action, amount } });
+  return { data, error };
+};
+
+// Agreements (e-signed rental contracts)
+export const createAgreement = async (agreementData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('agreements').insert(agreementData).select().single();
+  return { data, error };
+};
+
+// Maintenance
+export const getMaintenanceForHost = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('maintenance')
+    .select('*, car:cars!inner(*)')
+    .eq('car.host_id', hostId)
+    .order('next_due_date', { ascending: true });
+  return { data, error };
+};
+
+export const createMaintenance = async (maintenanceData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('maintenance').insert(maintenanceData).select().single();
+  return { data, error };
+};
+
 // Reviews
 export const getCarReviews = async (carId: string) => {
   const { data, error } = await supabase
@@ -193,4 +273,190 @@ export const getMessages = async (bookingId: string) => {
 export const sendMessage = async (messageData: Record<string, unknown>) => {
   const { data, error } = await supabase.from('messages').insert(messageData).select().single();
   return { data, error };
+};
+
+// ── Order stage (Fleetwire-style reserved -> picked up -> returned) ──
+export const updateOrderStage = async (bookingId: string, order_stage: string) => {
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({ order_stage })
+    .eq('id', bookingId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+// ── Coupons ──
+export const getCoupons = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('host_id', hostId)
+    .order('created_at', { ascending: false });
+  return { data, error };
+};
+
+export const createCoupon = async (couponData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('coupons').insert(couponData).select().single();
+  return { data, error };
+};
+
+export const updateCoupon = async (couponId: string, updates: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('coupons').update(updates).eq('id', couponId).select().single();
+  return { data, error };
+};
+
+// Looks up an active coupon by code for a given host — used at checkout.
+export const lookupCoupon = async (hostId: string, code: string) => {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('host_id', hostId)
+    .eq('code', code.trim().toUpperCase())
+    .eq('is_active', true)
+    .maybeSingle();
+  return { data, error };
+};
+
+// ── Refunds ──
+export const issueRefund = async (bookingId: string, amount: number) => {
+  const { data, error } = await supabase.functions.invoke('issue-refund', { body: { bookingId, amount } });
+  return { data, error };
+};
+
+// ── Payment links / partial (down) payments ──
+export const createPaymentLinkCheckout = async (bookingId: string, amount: number, description?: string) => {
+  const { data, error } = await supabase.functions.invoke('create-payment-link', { body: { bookingId, amount, description } });
+  return { data, error };
+};
+
+// ── Message templates (automated messaging) ──
+export const getMessageTemplates = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('message_templates')
+    .select('*')
+    .eq('host_id', hostId)
+    .order('event_type', { ascending: true });
+  return { data, error };
+};
+
+export const upsertMessageTemplate = async (templateData: Record<string, unknown>) => {
+  const { data, error } = await supabase
+    .from('message_templates')
+    .upsert(templateData, { onConflict: 'host_id,event_type,channel' })
+    .select()
+    .single();
+  return { data, error };
+};
+
+// ── Customer CRM (notes) ──
+export const getCustomerNotes = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('customer_notes')
+    .select('*')
+    .eq('host_id', hostId);
+  return { data, error };
+};
+
+export const upsertCustomerNote = async (hostId: string, renterId: string, note: string) => {
+  const { data, error } = await supabase
+    .from('customer_notes')
+    .upsert({ host_id: hostId, renter_id: renterId, note }, { onConflict: 'host_id,renter_id' })
+    .select()
+    .single();
+  return { data, error };
+};
+
+// ── Custom checkout fields ──
+export const getCustomCheckoutFields = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('custom_checkout_fields')
+    .select('*')
+    .eq('host_id', hostId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+  return { data, error };
+};
+
+export const getAllCustomCheckoutFields = async (hostId: string) => {
+  const { data, error } = await supabase
+    .from('custom_checkout_fields')
+    .select('*')
+    .eq('host_id', hostId)
+    .order('sort_order', { ascending: true });
+  return { data, error };
+};
+
+export const createCustomCheckoutField = async (fieldData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('custom_checkout_fields').insert(fieldData).select().single();
+  return { data, error };
+};
+
+export const updateCustomCheckoutField = async (fieldId: string, updates: Record<string, unknown>) => {
+  const { data, error } = await supabase
+    .from('custom_checkout_fields')
+    .update(updates)
+    .eq('id', fieldId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const deleteCustomCheckoutField = async (fieldId: string) => {
+  const { error } = await supabase.from('custom_checkout_fields').delete().eq('id', fieldId);
+  return { error };
+};
+
+// ── Staff / role accounts ──
+// Invites a staff account. Supabase's client SDK can't create users directly
+// (that needs the service-role key), so this calls an Edge Function that
+// runs with admin rights on the server side.
+export const inviteStaffAccount = async (email: string, fullName: string) => {
+  const { data, error } = await supabase.functions.invoke('invite-staff', { body: { email, fullName } });
+  return { data, error };
+};
+
+export const getStaffAccounts = async () => {
+  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'staff');
+  return { data, error };
+};
+
+export const revokeStaffAccount = async (profileId: string) => {
+  const { data, error } = await supabase.functions.invoke('revoke-staff', { body: { profileId } });
+  return { data, error };
+};
+
+// ── Automated messaging trigger ──
+// Fire-and-forget: call after a booking event (confirmed / requested / pickup / return).
+// Safe to call even if Resend isn't configured yet — the Edge Function just no-ops.
+export const sendBookingNotification = async (bookingId: string, eventType: string) => {
+  try {
+    await supabase.functions.invoke('send-notification', { body: { bookingId, eventType } });
+  } catch {
+    /* never block the booking flow on a notification failure */
+  }
+};
+
+// ── Reports & analytics ──
+// Simple CSV export helper — works entirely client-side, no backend needed.
+export const exportToCsv = (filename: string, rows: Record<string, unknown>[]) => {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map(row =>
+      headers.map(h => {
+        const val = row[h] ?? '';
+        const str = String(val).replace(/"/g, '""');
+        return /[",\n]/.test(str) ? `"${str}"` : str;
+      }).join(',')
+    ),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 };

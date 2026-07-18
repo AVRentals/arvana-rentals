@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import CarCard from '@/components/CarCard';
 import { CarCardSkeleton } from '@/components/LoadingSkeleton';
-import { sampleCars, categories } from '@/data/sampleData';
+import { categories } from '@/data/sampleData';
+import { getCarsWithFallback } from '@/lib/supabase';
 import { Car } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import Footer from '@/components/Footer';
@@ -52,14 +53,17 @@ const Search: React.FC = () => {
   const [instantBook, setInstantBook] = useState(false);
   const [locationQuery, setLocationQuery] = useState(searchParams.get('location') || '');
 
-  // Simulate data loading
+  // Load real fleet data (falls back to local data if Supabase isn't connected yet)
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const t = setTimeout(() => {
-      setCars(sampleCars);
-      setLoading(false);
-    }, 800);
-    return () => clearTimeout(t);
+    getCarsWithFallback().then(data => {
+      if (!cancelled) {
+        setCars(data);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const filteredAndSorted = useMemo(() => {

@@ -13,6 +13,7 @@ import Signup from '@/pages/Signup';
 import Book from '@/pages/Book';
 import BookingConfirmation from '@/pages/BookingConfirmation';
 import Dashboard from '@/pages/Dashboard';
+import FleetManager from '@/pages/FleetManager';
 import About from '@/pages/About';
 import Contact from '@/pages/Contact';
 import Privacy from '@/pages/Privacy';
@@ -71,6 +72,7 @@ const AppRoutes: React.FC = () => {
 
         {/* Dashboards */}
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/admin" element={<FleetManager />} />
 
         {/* Company / Info pages */}
         <Route path="/about" element={<About />} />

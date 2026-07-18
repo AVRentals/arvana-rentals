@@ -10,11 +10,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE profiles (
   id                      UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name               TEXT,
+  email                   TEXT,
   avatar_url              TEXT,
   phone                   TEXT,
   bio                     TEXT,
   is_host                 BOOLEAN DEFAULT false,
   driver_license_verified BOOLEAN DEFAULT false,
+  role                    TEXT NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','staff')),
   created_at              TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -22,10 +24,11 @@ CREATE TABLE profiles (
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, is_host, avatar_url)
+  INSERT INTO public.profiles (id, full_name, email, is_host, avatar_url)
   VALUES (
     NEW.id,
     NEW.raw_user_meta_data->>'full_name',
+    NEW.email,
     (NEW.raw_user_meta_data->>'is_host')::boolean,
     NEW.raw_user_meta_data->>'avatar_url'
   );
@@ -48,9 +51,12 @@ CREATE TABLE cars (
   year          INTEGER NOT NULL,
   color         TEXT NOT NULL,
   license_plate TEXT,
+  vin           TEXT,
   description   TEXT NOT NULL,
   category      TEXT NOT NULL CHECK (category IN ('economy','suv','luxury','electric','sports')),
   daily_rate    NUMERIC(10,2) NOT NULL CHECK (daily_rate > 0),
+  weekly_rate   NUMERIC(10,2),
+  monthly_rate  NUMERIC(10,2),
   location      TEXT NOT NULL,
   city          TEXT NOT NULL,
   state         TEXT NOT NULL,
@@ -63,6 +69,10 @@ CREATE TABLE cars (
   is_approved   BOOLEAN DEFAULT false,
   rating        NUMERIC(3,2) DEFAULT 0,
   total_trips   INTEGER DEFAULT 0,
+  odometer      INTEGER,
+  gps_provider  TEXT,
+  purchase_price NUMERIC(10,2),
+  purchase_date  DATE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -86,9 +96,89 @@ CREATE TABLE bookings (
   pickup_location           TEXT NOT NULL,
   dropoff_location          TEXT,
   stripe_payment_intent_id  TEXT,
+  deposit_amount            NUMERIC(10,2),
+  deposit_stripe_intent_id  TEXT,
+  deposit_status            TEXT DEFAULT 'none'
+                              CHECK (deposit_status IN ('none','held','captured','released','forfeited')),
+  identity_verification_status TEXT DEFAULT 'not_started'
+                              CHECK (identity_verification_status IN ('not_started','pending','verified','failed')),
+  stripe_identity_session_id TEXT,
+  renter_has_insurance      BOOLEAN,
+  renter_insurance_company  TEXT,
+  renter_insurance_policy_number TEXT,
+  order_stage               TEXT NOT NULL DEFAULT 'reserved'
+                              CHECK (order_stage IN ('reserved','picked_up','returned')),
+  coupon_code               TEXT,
+  discount_amount           NUMERIC(10,2) DEFAULT 0,
+  refund_amount             NUMERIC(10,2),
+  refund_status             TEXT DEFAULT 'none'
+                              CHECK (refund_status IN ('none','requested','issued')),
+  refunded_at               TIMESTAMPTZ,
+  balance_due               NUMERIC(10,2),
+  custom_field_responses    JSONB DEFAULT '{}',
   created_at                TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT valid_dates CHECK (end_date > start_date)
 );
+
+-- ─────────────────────────────────────────
+-- AGREEMENTS (e-signed rental contracts)
+-- ─────────────────────────────────────────
+CREATE TABLE agreements (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  booking_id      UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  signer_name     TEXT NOT NULL,
+  signer_email    TEXT,
+  contract_version TEXT NOT NULL DEFAULT 'v1',
+  contract_text   TEXT NOT NULL,
+  signed_at       TIMESTAMPTZ DEFAULT NOW(),
+  ip_address      TEXT,
+  user_agent      TEXT
+);
+
+ALTER TABLE agreements ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Renters and hosts can view agreements on their bookings"
+  ON agreements FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM bookings
+    WHERE bookings.id = agreements.booking_id
+    AND (bookings.renter_id = auth.uid() OR bookings.host_id = auth.uid())
+  ));
+
+CREATE POLICY "Renters can sign their own booking's agreement"
+  ON agreements FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM bookings
+    WHERE bookings.id = agreements.booking_id
+    AND bookings.renter_id = auth.uid()
+  ));
+
+CREATE INDEX idx_agreements_booking_id ON agreements(booking_id);
+
+-- ─────────────────────────────────────────
+-- MAINTENANCE
+-- ─────────────────────────────────────────
+CREATE TABLE maintenance (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  car_id          UUID NOT NULL REFERENCES cars(id) ON DELETE CASCADE,
+  service_type    TEXT NOT NULL,
+  date_done       DATE,
+  mileage         INTEGER,
+  cost            NUMERIC(10,2),
+  shop            TEXT,
+  next_due_date   DATE,
+  next_due_miles  INTEGER,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE maintenance ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Hosts can manage maintenance on their own cars"
+  ON maintenance FOR ALL
+  USING (EXISTS (SELECT 1 FROM cars WHERE cars.id = maintenance.car_id AND cars.host_id = auth.uid()));
+
+CREATE INDEX idx_maintenance_car_id ON maintenance(car_id);
 
 -- ─────────────────────────────────────────
 -- REVIEWS
@@ -130,6 +220,103 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER on_review_created
   AFTER INSERT OR UPDATE ON reviews
   FOR EACH ROW EXECUTE FUNCTION update_car_rating();
+
+-- ─────────────────────────────────────────
+-- COUPONS
+-- ─────────────────────────────────────────
+CREATE TABLE coupons (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  host_id       UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  code          TEXT NOT NULL,
+  discount_type TEXT NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent','fixed')),
+  discount_value NUMERIC(10,2) NOT NULL,
+  max_uses      INTEGER,
+  times_used    INTEGER NOT NULL DEFAULT 0,
+  expires_at    DATE,
+  is_active     BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(host_id, code)
+);
+
+ALTER TABLE coupons ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Hosts can manage their own coupons"
+  ON coupons FOR ALL USING (auth.uid() = host_id);
+
+CREATE POLICY "Anyone can look up an active coupon by code"
+  ON coupons FOR SELECT USING (is_active = true);
+
+CREATE INDEX idx_coupons_host_id ON coupons(host_id);
+CREATE INDEX idx_coupons_code ON coupons(code);
+
+-- ─────────────────────────────────────────
+-- MESSAGE TEMPLATES (automated messaging)
+-- ─────────────────────────────────────────
+CREATE TABLE message_templates (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  host_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  event_type  TEXT NOT NULL CHECK (event_type IN (
+                'booking_confirmed','pickup_reminder','return_reminder','booking_requested'
+              )),
+  channel     TEXT NOT NULL DEFAULT 'email' CHECK (channel IN ('email','sms')),
+  subject     TEXT,
+  body        TEXT NOT NULL,
+  is_active   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(host_id, event_type, channel)
+);
+
+ALTER TABLE message_templates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Hosts can manage their own message templates"
+  ON message_templates FOR ALL USING (auth.uid() = host_id);
+
+CREATE INDEX idx_message_templates_host_id ON message_templates(host_id);
+
+-- ─────────────────────────────────────────
+-- CUSTOMER NOTES (lightweight CRM)
+-- ─────────────────────────────────────────
+CREATE TABLE customer_notes (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  host_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  renter_id   UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  note        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(host_id, renter_id)
+);
+
+ALTER TABLE customer_notes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Hosts can manage their own customer notes"
+  ON customer_notes FOR ALL USING (auth.uid() = host_id);
+
+CREATE INDEX idx_customer_notes_host_id ON customer_notes(host_id);
+CREATE INDEX idx_customer_notes_renter_id ON customer_notes(renter_id);
+
+-- ─────────────────────────────────────────
+-- CUSTOM CHECKOUT FIELDS
+-- ─────────────────────────────────────────
+CREATE TABLE custom_checkout_fields (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  host_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  label       TEXT NOT NULL,
+  field_type  TEXT NOT NULL DEFAULT 'text' CHECK (field_type IN ('text','select','checkbox')),
+  options     TEXT[] DEFAULT '{}',
+  is_required BOOLEAN DEFAULT false,
+  is_active   BOOLEAN DEFAULT true,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE custom_checkout_fields ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Hosts can manage their own checkout fields"
+  ON custom_checkout_fields FOR ALL USING (auth.uid() = host_id);
+
+CREATE POLICY "Anyone can view active checkout fields"
+  ON custom_checkout_fields FOR SELECT USING (is_active = true);
+
+CREATE INDEX idx_checkout_fields_host_id ON custom_checkout_fields(host_id);
 
 -- ─────────────────────────────────────────
 -- MESSAGES

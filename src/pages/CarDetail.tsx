@@ -12,7 +12,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CarDetailSkeleton } from '@/components/LoadingSkeleton';
 import CarCard from '@/components/CarCard';
 import Footer from '@/components/Footer';
-import { sampleCars, sampleReviews } from '@/data/sampleData';
+import { sampleReviews, sampleCars } from '@/data/sampleData';
+import { getCarByIdWithFallback } from '@/lib/supabase';
 import { Car, Review } from '@/types';
 import {
   formatCurrency, formatDate, formatDateShort, getInitials,
@@ -51,17 +52,19 @@ const CarDetail: React.FC = () => {
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const t = setTimeout(() => {
-      const found = sampleCars.find(c => c.id === id);
+    if (!id) return;
+    getCarByIdWithFallback(id).then(found => {
+      if (cancelled) return;
       if (found) {
         setCar(found);
         setSaved(isCarSaved(found.id));
         setReviews(sampleReviews.filter(r => r.car_id === id).slice(0, 5));
       }
       setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
+    });
+    return () => { cancelled = true; };
   }, [id]);
 
   const totalDays = startDate && endDate ? calculateDays(startDate, endDate) : 0;

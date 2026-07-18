@@ -16,58 +16,38 @@ const CITIES = [
 ];
 
 const STATS = [
-  { value: '2,500+', label: 'Verified Cars' },
-  { value: '50K+',   label: 'Happy Renters' },
-  { value: '4.9★',   label: 'Average Rating' },
-  { value: '20+',    label: 'Florida Cities' },
+  { value: '2',    label: 'Cars in Our Fleet' },
+  { value: '100%', label: 'Personally Inspected' },
+  { value: '24/7', label: 'GPS Monitored' },
+  { value: '2026', label: 'Locally Owned' },
 ];
 
 const WHY = [
   {
     icon: <Shield className="w-6 h-6" />,
-    title: 'Fully Insured',
-    desc: 'Every trip covered with comprehensive insurance and 24/7 roadside support.',
+    title: 'Personally Vetted',
+    desc: "We verify every renter's ID before handoff — no anonymous bookings.",
   },
   {
     icon: <Zap className="w-6 h-6" />,
-    title: 'Instant Booking',
-    desc: 'Skip the counter. Book in minutes and pick up your car right away.',
+    title: 'Fast Response',
+    desc: 'Submit a request and hear back from us within 24 hours, usually much sooner.',
   },
   {
     icon: <CheckCircle2 className="w-6 h-6" />,
-    title: 'Verified Fleet',
-    desc: 'Every car passes a 150-point quality inspection before it hits our platform.',
+    title: 'Inspected Fleet',
+    desc: 'Every car gets a full inspection before it goes out for its first rental.',
   },
   {
     icon: <Clock className="w-6 h-6" />,
     title: 'Flexible Rentals',
-    desc: 'Hourly, daily, or weekly. You choose what fits your schedule.',
+    desc: 'Daily or weekly. You choose what fits your schedule.',
   },
 ];
 
-const TESTIMONIALS = [
-  {
-    name: 'Sophia R.',
-    role: 'Business Traveler',
-    rating: 5,
-    text: 'Rented a Model S for a week-long trip. Seamless from start to finish — the app is gorgeous and the car was spotless.',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face',
-  },
-  {
-    name: 'Marcus T.',
-    role: 'Weekend Explorer',
-    rating: 5,
-    text: 'Got a Porsche 911 for our anniversary weekend. Arvana Rentals made it effortless. The selection is unreal.',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&h=80&fit=crop&crop=face',
-  },
-  {
-    name: 'Camille L.',
-    role: 'Frequent Renter',
-    rating: 5,
-    text: "I've rented over 20 times through Arvana Rentals. Nothing comes close to the quality and variety they offer.",
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&crop=face',
-  },
-];
+// No reviews yet — this is a brand new operation. Once real trips happen,
+// replace this with actual renter testimonials.
+const TESTIMONIALS: { name: string; role: string; rating: number; text: string; avatar: string }[] = [];
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -180,9 +160,9 @@ const Home: React.FC = () => {
                 {/* Trust badges row */}
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 pt-3 border-t border-white/10">
                   {[
-                    { icon: '🛡️', text: 'Fully insured' },
-                    { icon: '✓', text: '150-point inspection' },
-                    { icon: '⚡', text: 'Instant confirmation' },
+                    { icon: '🛡️', text: 'Locally owned & operated' },
+                    { icon: '✓', text: 'Full inspection before every rental' },
+                    { icon: '⚡', text: 'Response within 24 hours' },
                   ].map(({ icon, text }) => (
                     <span key={text} className="flex items-center gap-1.5 text-white/50 text-xs font-medium">
                       <span className="text-gold-400">{icon}</span> {text}
@@ -411,8 +391,8 @@ const Home: React.FC = () => {
                       <Star className="w-4 h-4 text-charcoal-900" fill="currentColor" />
                     </div>
                     <div>
-                      <p className="font-extrabold text-sm leading-none">4.9 / 5</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">2M+ reviews</p>
+                      <p className="font-extrabold text-sm leading-none">New</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Be one of our first renters</p>
                     </div>
                   </div>
                 </div>
@@ -471,9 +451,9 @@ const Home: React.FC = () => {
             <div className="hidden md:block absolute top-10 left-1/4 right-1/4 h-px bg-gradient-to-r from-gold-400/30 via-gold-400/60 to-gold-400/30" />
 
             {[
-              { step: '01', icon: <Search className="w-6 h-6" />, title: 'Search & Choose', desc: 'Browse thousands of verified cars in your city. Filter by type, price, and features.' },
-              { step: '02', icon: <Calendar className="w-6 h-6" />, title: 'Book Instantly', desc: 'Select your dates, complete checkout in minutes. No hidden fees, no surprises.' },
-              { step: '03', icon: <MapPin className="w-6 h-6" />, title: 'Pick Up & Drive', desc: 'Meet your host or get keyless entry. Hit the road in your dream car.' },
+              { step: '01', icon: <Search className="w-6 h-6" />, title: 'Choose Your Car', desc: 'Browse our fleet and pick your dates. No hidden fees, no surprises.' },
+              { step: '02', icon: <Calendar className="w-6 h-6" />, title: 'Submit a Request', desc: "We verify your ID, send a rental agreement to sign, and confirm within 24 hours." },
+              { step: '03', icon: <MapPin className="w-6 h-6" />, title: 'Pick Up & Drive', desc: 'Once approved and paid, get your pickup details and hit the road.' },
             ].map((s, i) => (
               <div key={s.step} className={`text-center animate-fade-in delay-${i * 200}`}>
                 <div className="relative inline-flex">
@@ -501,42 +481,44 @@ const Home: React.FC = () => {
       </section>
 
       {/* ════════════════════════════════════════
-          TESTIMONIALS
+          TESTIMONIALS (empty until real trips happen)
       ════════════════════════════════════════ */}
-      <section className="py-24 bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <div className="section-label justify-center">Reviews</div>
-            <h2 className="display-lg font-serif text-foreground">
-              Loved by drivers<br /><span className="text-gold-gradient">everywhere.</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t, i) => (
-              <div
-                key={t.name}
-                className={`relative p-6 rounded-3xl bg-card border border-border hover:border-gold-300/50 hover:shadow-gold-sm transition-all duration-300 animate-fade-in delay-${i * 150}`}
-              >
-                {/* Quote mark */}
-                <div className="text-5xl font-serif text-gold-200 dark:text-gold-900/60 leading-none mb-4">"</div>
-                <p className="text-foreground/80 text-sm leading-relaxed mb-6">{t.text}</p>
-                <div className="flex items-center gap-3 pt-4 border-t border-border">
-                  <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-gold-300/50" />
-                  <div>
-                    <p className="font-bold text-sm">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.role}</p>
-                  </div>
-                  <div className="ml-auto flex gap-0.5">
-                    {Array.from({ length: t.rating }).map((_, j) => (
-                      <Star key={j} className="w-3.5 h-3.5 text-gold-400" fill="currentColor" />
-                    ))}
+      {TESTIMONIALS.length > 0 && (
+        <section className="py-24 bg-background">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-14">
+              <div className="section-label justify-center">Reviews</div>
+              <h2 className="display-lg font-serif text-foreground">
+                Loved by drivers<br /><span className="text-gold-gradient">everywhere.</span>
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {TESTIMONIALS.map((t, i) => (
+                <div
+                  key={t.name}
+                  className={`relative p-6 rounded-3xl bg-card border border-border hover:border-gold-300/50 hover:shadow-gold-sm transition-all duration-300 animate-fade-in delay-${i * 150}`}
+                >
+                  {/* Quote mark */}
+                  <div className="text-5xl font-serif text-gold-200 dark:text-gold-900/60 leading-none mb-4">"</div>
+                  <p className="text-foreground/80 text-sm leading-relaxed mb-6">{t.text}</p>
+                  <div className="flex items-center gap-3 pt-4 border-t border-border">
+                    <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-gold-300/50" />
+                    <div>
+                      <p className="font-bold text-sm">{t.name}</p>
+                      <p className="text-xs text-muted-foreground">{t.role}</p>
+                    </div>
+                    <div className="ml-auto flex gap-0.5">
+                      {Array.from({ length: t.rating }).map((_, j) => (
+                        <Star key={j} className="w-3.5 h-3.5 text-gold-400" fill="currentColor" />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ════════════════════════════════════════
           FINAL CTA BANNER

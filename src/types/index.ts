@@ -1,11 +1,15 @@
+export type ProfileRole = 'owner' | 'staff';
+
 export interface Profile {
   id: string;
   full_name: string;
+  email?: string;
   avatar_url?: string;
   phone?: string;
   bio?: string;
   is_host: boolean;
   driver_license_verified: boolean;
+  role?: ProfileRole;
   created_at: string;
 }
 
@@ -21,9 +25,12 @@ export interface Car {
   year: number;
   color: string;
   license_plate?: string;
+  vin?: string;
   description: string;
   category: CarCategory;
   daily_rate: number;
+  weekly_rate?: number;
+  monthly_rate?: number;
   location: string;
   city: string;
   state: string;
@@ -36,11 +43,33 @@ export interface Car {
   is_approved: boolean;
   rating: number;
   total_trips: number;
+  odometer?: number;
+  gps_provider?: string;
+  purchase_price?: number;
+  purchase_date?: string;
   created_at: string;
   host?: Profile;
 }
 
+export interface Maintenance {
+  id: string;
+  car_id: string;
+  service_type: string;
+  date_done?: string;
+  mileage?: number;
+  cost?: number;
+  shop?: string;
+  next_due_date?: string;
+  next_due_miles?: number;
+  notes?: string;
+  created_at: string;
+}
+
 export type BookingStatus = 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled';
+export type DepositStatus = 'none' | 'held' | 'captured' | 'released' | 'forfeited';
+export type IdentityVerificationStatus = 'not_started' | 'pending' | 'verified' | 'failed';
+export type OrderStage = 'reserved' | 'picked_up' | 'returned';
+export type RefundStatus = 'none' | 'requested' | 'issued';
 
 export interface Booking {
   id: string;
@@ -58,10 +87,84 @@ export interface Booking {
   pickup_location: string;
   dropoff_location?: string;
   stripe_payment_intent_id?: string;
+  deposit_amount?: number;
+  deposit_stripe_intent_id?: string;
+  deposit_status?: DepositStatus;
+  identity_verification_status?: IdentityVerificationStatus;
+  stripe_identity_session_id?: string;
+  renter_has_insurance?: boolean;
+  renter_insurance_company?: string;
+  renter_insurance_policy_number?: string;
+  order_stage?: OrderStage;
+  coupon_code?: string;
+  discount_amount?: number;
+  refund_amount?: number;
+  refund_status?: RefundStatus;
+  refunded_at?: string;
+  balance_due?: number;
+  custom_field_responses?: Record<string, string | boolean>;
   created_at: string;
   car?: Car;
   renter?: Profile;
   host?: Profile;
+}
+
+export interface Coupon {
+  id: string;
+  host_id: string;
+  code: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
+  max_uses?: number;
+  times_used: number;
+  expires_at?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export type MessageEventType = 'booking_confirmed' | 'pickup_reminder' | 'return_reminder' | 'booking_requested';
+
+export interface MessageTemplate {
+  id: string;
+  host_id: string;
+  event_type: MessageEventType;
+  channel: 'email' | 'sms';
+  subject?: string;
+  body: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CustomerNote {
+  id: string;
+  host_id: string;
+  renter_id: string;
+  note: string;
+  created_at: string;
+}
+
+export interface CustomCheckoutField {
+  id: string;
+  host_id: string;
+  label: string;
+  field_type: 'text' | 'select' | 'checkbox';
+  options: string[];
+  is_required: boolean;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Agreement {
+  id: string;
+  booking_id: string;
+  signer_name: string;
+  signer_email?: string;
+  contract_version: string;
+  contract_text: string;
+  signed_at: string;
+  ip_address?: string;
+  user_agent?: string;
 }
 
 export interface Review {
