@@ -103,6 +103,11 @@ export interface Booking {
   refunded_at?: string;
   balance_due?: number;
   custom_field_responses?: Record<string, string | boolean>;
+  is_gig_worker?: boolean;
+  gig_platform?: string;
+  date_of_birth?: string;
+  license_photo_path?: string;
+  gig_screenshot_path?: string;
   created_at: string;
   car?: Car;
   renter?: Profile;

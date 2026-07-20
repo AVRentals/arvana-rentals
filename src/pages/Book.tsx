@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   createBooking, createAgreement, getCarByIdWithFallback, isSupabaseConfigured, DANIEL_HOST_ID,
   lookupCoupon, getCustomCheckoutFields, sendBookingNotification,
+  uploadVerificationDoc,
 } from '@/lib/supabase';
 import { getContractText, CONTRACT_VERSION } from '@/data/contractTemplate';
 import toast from 'react-hot-toast';
@@ -43,6 +44,13 @@ const Book: React.FC = () => {
   const [hasOwnInsurance, setHasOwnInsurance] = useState<boolean | null>(null);
   const [insuranceCompany, setInsuranceCompany] = useState('');
   const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
+
+  // Gig worker (rideshare/delivery) rental path
+  const [isGigWorker, setIsGigWorker] = useState<boolean | null>(null);
+  const [gigPlatform, setGigPlatform] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [gigScreenshotFile, setGigScreenshotFile] = useState<File | null>(null);
 
   // Step 3 state (e-signature)
   const [signatureName, setSignatureName] = useState('');
@@ -145,6 +153,18 @@ const Book: React.FC = () => {
         toast.error('Please enter your insurance company and policy number'); return;
       }
       if (!termsAccepted) { toast.error('Please accept the terms and conditions'); return; }
+      if (isGigWorker === null) { toast.error('Please answer whether this rental is for gig work'); return; }
+      if (isGigWorker) {
+        if (totalDays < 7) {
+          toast.error('Gig-worker rentals require a minimum 1-week booking — go back and adjust your dates'); return;
+        }
+        if (!gigPlatform) { toast.error('Please select which gig platform you drive for'); return; }
+        if (!dateOfBirth) { toast.error('Please enter your date of birth'); return; }
+        const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        if (age < 25) { toast.error('Gig-worker rentals require drivers to be 25 or older'); return; }
+        if (!licenseFile) { toast.error("Please upload a photo of your driver's license"); return; }
+        if (!gigScreenshotFile) { toast.error('Please upload a screenshot of your recent gig trips (last 30 days)'); return; }
+      }
       for (const f of customFields) {
         if (f.is_required && !customFieldResponses[f.id]) {
           toast.error(`Please fill in "${f.label}"`); return;
@@ -173,6 +193,19 @@ const Book: React.FC = () => {
       insurancePolicyNumber: hasOwnInsurance ? insurancePolicyNumber : undefined,
     }) : '';
 
+    let licensePhotoPath: string | null = null;
+    let gigScreenshotPath: string | null = null;
+    if (isSupabaseConfigured && isGigWorker && user?.id) {
+      if (licenseFile) {
+        const { path } = await uploadVerificationDoc(user.id, licenseFile, 'license');
+        licensePhotoPath = path;
+      }
+      if (gigScreenshotFile) {
+        const { path } = await uploadVerificationDoc(user.id, gigScreenshotFile, 'gigscreenshot');
+        gigScreenshotPath = path;
+      }
+    }
+
     if (isSupabaseConfigured && car) {
       const { data, error } = await createBooking({
         car_id: car.id,
@@ -195,6 +228,11 @@ const Book: React.FC = () => {
         coupon_code: appliedCoupon?.code || null,
         discount_amount: discountAmount || 0,
         custom_field_responses: customFieldResponses,
+        is_gig_worker: isGigWorker || false,
+        gig_platform: isGigWorker ? gigPlatform : null,
+        date_of_birth: isGigWorker ? dateOfBirth : null,
+        license_photo_path: licensePhotoPath,
+        gig_screenshot_path: gigScreenshotPath,
       });
       if (!error && data) {
         bookingId = data.id;
@@ -468,6 +506,70 @@ const Book: React.FC = () => {
                     )}
                   </div>
 
+                  {/* Gig worker (rideshare/delivery) rental path */}
+                  <div className="border-t pt-4">
+                    <Label>Renting this car for gig work? <span className="text-muted-foreground font-normal">(Uber, Lyft, DoorDash, Amazon Flex, Instacart, etc.)</span></Label>
+                    <div className="flex gap-2 mt-1.5">
+                      <button type="button" onClick={() => setIsGigWorker(true)}
+                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${isGigWorker === true ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-border'}`}>
+                        Yes, I drive for gig work
+                      </button>
+                      <button type="button" onClick={() => setIsGigWorker(false)}
+                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${isGigWorker === false ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-border'}`}>
+                        No, personal use
+                      </button>
+                    </div>
+
+                    {isGigWorker === true && (
+                      <div className="mt-3 space-y-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-400">
+                          <p className="font-bold mb-1">Gig-worker rental requirements</p>
+                          <ul className="space-y-0.5 text-xs">
+                            <li>✓ Driver must be 25 or older</li>
+                            <li>✓ Minimum 1-week rental commitment</li>
+                            <li>✓ Proof of active trips within the last 30 days</li>
+                            <li>✓ Valid driver's license</li>
+                          </ul>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <Label>Gig platform</Label>
+                            <select
+                              className="w-full rounded-xl border px-3 py-2.5 text-sm bg-muted outline-none focus:ring-2 focus:ring-gold-400 mt-1.5"
+                              value={gigPlatform} onChange={e => setGigPlatform(e.target.value)}
+                            >
+                              <option value="">Select…</option>
+                              <option value="Uber">Uber</option>
+                              <option value="Lyft">Lyft</option>
+                              <option value="DoorDash">DoorDash</option>
+                              <option value="Amazon Flex">Amazon Flex</option>
+                              <option value="Instacart">Instacart</option>
+                              <option value="Roadie">Roadie</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label>Date of birth</Label>
+                            <Input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} className="mt-1.5" />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Photo of your driver's license</Label>
+                          <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
+                            onChange={e => setLicenseFile(e.target.files?.[0] || null)} />
+                        </div>
+
+                        <div>
+                          <Label>Screenshot of your active trips (last 30 days)</Label>
+                          <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
+                            onChange={e => setGigScreenshotFile(e.target.files?.[0] || null)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Host-defined custom checkout fields */}
                   {customFields.length > 0 && (
                     <div className="space-y-4 border-t pt-4">
@@ -601,6 +703,12 @@ const Book: React.FC = () => {
                       <span className="text-muted-foreground">Phone</span>
                       <span className="font-semibold">{driverPhone || '—'}</span>
                     </div>
+                    {isGigWorker && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Gig work rental</span>
+                        <span className="font-semibold">{gigPlatform}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{formatCurrency(car.daily_rate)} × {totalDays} days</span>
                       <span className="font-semibold">{formatCurrency(subtotal)}</span>

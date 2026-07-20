@@ -116,6 +116,11 @@ CREATE TABLE bookings (
   refunded_at               TIMESTAMPTZ,
   balance_due               NUMERIC(10,2),
   custom_field_responses    JSONB DEFAULT '{}',
+  is_gig_worker             BOOLEAN DEFAULT false,
+  gig_platform              TEXT,
+  date_of_birth             DATE,
+  license_photo_path        TEXT,
+  gig_screenshot_path       TEXT,
   created_at                TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT valid_dates CHECK (end_date > start_date)
 );
@@ -396,6 +401,34 @@ CREATE POLICY "Authenticated users can send messages"
 CREATE POLICY "Receivers can mark messages as read"
   ON messages FOR UPDATE
   USING (auth.uid() = receiver_id);
+
+-- ─────────────────────────────────────────
+-- STORAGE: verification-docs (gig-worker license photo + trip screenshot)
+-- ─────────────────────────────────────────
+-- Private bucket — files are only readable by the renter who uploaded them
+-- and the host of the booking they belong to, never public.
+-- Path convention: {renter_auth_uid}/{timestamp}-license.jpg or -gigscreenshot.jpg
+insert into storage.buckets (id, name, public)
+values ('verification-docs', 'verification-docs', false)
+on conflict (id) do nothing;
+
+create policy "Renters can upload their own verification docs"
+  on storage.objects for insert
+  with check (bucket_id = 'verification-docs' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Renters can view their own verification docs"
+  on storage.objects for select
+  using (bucket_id = 'verification-docs' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Hosts can view verification docs for their bookings"
+  on storage.objects for select
+  using (
+    bucket_id = 'verification-docs' and exists (
+      select 1 from bookings
+      where bookings.renter_id::text = (storage.foldername(name))[1]
+      and bookings.host_id = auth.uid()
+    )
+  );
 
 -- ─────────────────────────────────────────
 -- INDEXES for performance

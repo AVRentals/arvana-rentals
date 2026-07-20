@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   isSupabaseConfigured, DANIEL_HOST_ID, ADMIN_EMAIL,
   getHostCars, getHostBookings, getMaintenanceForHost, updateBookingStatus, depositAction,
-  createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout,
+  createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -281,6 +281,13 @@ const FleetManager: React.FC = () => {
     if (error) { toast.error('Refund failed — check Stripe setup'); return; }
     setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, refund_amount: amount, refund_status: 'issued' } : b));
     toast.success(`Refund of ${formatCurrency(amount)} issued`);
+  };
+
+  const handleViewDoc = async (path: string) => {
+    if (!isSupabaseConfigured) { toast.error('Connect Supabase to view uploaded documents'); return; }
+    const { url, error } = await getSignedDocUrl(path);
+    if (error || !url) { toast.error('Could not load that document'); return; }
+    window.open(url, '_blank');
   };
 
   const handleSendPaymentLink = async (bookingId: string) => {
@@ -574,6 +581,24 @@ const FleetManager: React.FC = () => {
                         )}
                         {b.renter_has_insurance === true && (
                           <span>Insurance: <strong>{b.renter_insurance_company || 'provided'}</strong></span>
+                        )}
+                        {b.is_gig_worker && (
+                          <span className="text-blue-600 font-semibold">Gig work rental: {b.gig_platform}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {b.is_gig_worker && (b.license_photo_path || b.gig_screenshot_path) && (
+                      <div className="flex gap-2 mt-3 flex-wrap">
+                        {b.license_photo_path && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewDoc(b.license_photo_path!)}>
+                            View license photo
+                          </Button>
+                        )}
+                        {b.gig_screenshot_path && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewDoc(b.gig_screenshot_path!)}>
+                            View trip screenshot
+                          </Button>
                         )}
                       </div>
                     )}
