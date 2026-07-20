@@ -612,7 +612,7 @@ const FleetManager: React.FC = () => {
                       </div>
                     )}
 
-                    {b.is_gig_worker && (b.license_photo_path || b.gig_screenshot_path) && (
+                    {(b.license_photo_path || b.gig_screenshot_path) && (
                       <div className="flex gap-2 mt-3 flex-wrap">
                         {b.license_photo_path && (
                           <Button variant="outline" size="sm" onClick={() => handleViewDoc(b.license_photo_path!)}>

@@ -195,12 +195,14 @@ const Book: React.FC = () => {
 
     let licensePhotoPath: string | null = null;
     let gigScreenshotPath: string | null = null;
-    if (isSupabaseConfigured && isGigWorker && user?.id) {
+    // License photo is offered to every renter (required for gig work);
+    // the trip screenshot only applies to gig-work rentals.
+    if (isSupabaseConfigured && user?.id) {
       if (licenseFile) {
         const { path } = await uploadVerificationDoc(user.id, licenseFile, 'license');
         licensePhotoPath = path;
       }
-      if (gigScreenshotFile) {
+      if (isGigWorker && gigScreenshotFile) {
         const { path } = await uploadVerificationDoc(user.id, gigScreenshotFile, 'gigscreenshot');
         gigScreenshotPath = path;
       }
@@ -466,6 +468,18 @@ const Book: React.FC = () => {
                     <Input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)}
                       placeholder="e.g. D1234567" className="mt-1.5" />
                     <p className="text-xs text-muted-foreground mt-1">Required for insurance purposes</p>
+
+                    <div className="mt-3">
+                      <Label>
+                        Photo of your driver's license
+                        {!isGigWorker && <span className="text-muted-foreground font-normal"> (optional — speeds up approval)</span>}
+                      </Label>
+                      <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
+                        onChange={e => setLicenseFile(e.target.files?.[0] || null)} />
+                      {licenseFile && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {licenseFile.name}</p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Insurance */}
@@ -556,16 +570,17 @@ const Book: React.FC = () => {
                         </div>
 
                         <div>
-                          <Label>Photo of your driver's license</Label>
-                          <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
-                            onChange={e => setLicenseFile(e.target.files?.[0] || null)} />
-                        </div>
-
-                        <div>
                           <Label>Screenshot of your active trips (last 30 days)</Label>
                           <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
                             onChange={e => setGigScreenshotFile(e.target.files?.[0] || null)} />
+                          {gigScreenshotFile && (
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {gigScreenshotFile.name}</p>
+                          )}
                         </div>
+
+                        <p className="text-xs text-muted-foreground">
+                          Your driver's license photo is collected above, under your license number.
+                        </p>
                       </div>
                     )}
                   </div>
