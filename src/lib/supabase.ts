@@ -426,6 +426,43 @@ export const revokeStaffAccount = async (profileId: string) => {
   return { data, error };
 };
 
+// ── Instant quote leads (homepage form — MMJ-style, no login required) ──
+export const createQuoteRequest = async (quoteData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('quote_requests').insert(quoteData).select().single();
+  return { data, error };
+};
+
+export const getQuoteRequests = async () => {
+  const { data, error } = await supabase
+    .from('quote_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+  return { data, error };
+};
+
+export const updateQuoteRequestStatus = async (quoteId: string, status: string) => {
+  const { data, error } = await supabase
+    .from('quote_requests')
+    .update({ status })
+    .eq('id', quoteId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+// Anonymous upload from the homepage quote form (quote-docs bucket).
+export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreenshot') => {
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${kind}.${file.name.split('.').pop() || 'jpg'}`;
+  const { error } = await supabase.storage.from('quote-docs').upload(path, file);
+  if (error) return { path: null, error };
+  return { path, error: null };
+};
+
+export const getSignedQuoteDocUrl = async (path: string) => {
+  const { data, error } = await supabase.storage.from('quote-docs').createSignedUrl(path, 60 * 10);
+  return { url: data?.signedUrl || null, error };
+};
+
 // ── Gig-worker verification uploads (license photo + gig trip screenshot) ──
 // Files live in the private 'verification-docs' bucket, path-scoped to the
 // uploading renter's own auth uid so RLS can allow only them + their booking's

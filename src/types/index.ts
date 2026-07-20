@@ -148,6 +148,23 @@ export interface CustomerNote {
   created_at: string;
 }
 
+export type QuoteRequestStatus = 'new' | 'contacted' | 'closed';
+
+export interface QuoteRequest {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  pickup_date?: string;
+  pickup_time?: string;
+  return_date?: string;
+  is_gig_worker?: boolean;
+  gig_screenshot_path?: string;
+  license_photo_path?: string;
+  status: QuoteRequestStatus;
+  created_at: string;
+}
+
 export interface CustomCheckoutField {
   id: string;
   host_id: string;

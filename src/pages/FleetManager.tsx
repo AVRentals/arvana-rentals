@@ -13,6 +13,7 @@ import {
   isSupabaseConfigured, DANIEL_HOST_ID, ADMIN_EMAIL,
   getHostCars, getHostBookings, getMaintenanceForHost, updateBookingStatus, depositAction,
   createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
+  getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -24,7 +25,7 @@ import CarFormModal, { formValuesToCarData, type CarFormValues } from '@/compone
 import { sampleCars, sampleBookings, sampleMaintenance } from '@/data/sampleData';
 import {
   Car, Booking, Maintenance, Coupon, MessageTemplate, MessageEventType,
-  CustomerNote, CustomCheckoutField, Profile, OrderStage,
+  CustomerNote, CustomCheckoutField, Profile, OrderStage, QuoteRequest, QuoteRequestStatus,
 } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -55,6 +56,7 @@ const NAV = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'cars', label: 'My Cars', icon: CarIcon },
   { id: 'requests', label: 'Booking Requests', icon: Calendar },
+  { id: 'quotes', label: 'Quote Leads', icon: Send },
   { id: 'orders', label: 'Orders & Lot', icon: ArrowRight },
   { id: 'customers', label: 'Customers', icon: Users },
   { id: 'maintenance', label: 'Maintenance', icon: Wrench },
@@ -162,6 +164,7 @@ const FleetManager: React.FC = () => {
   const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
   const [checkoutFields, setCheckoutFields] = useState<CustomCheckoutField[]>([]);
   const [staff, setStaff] = useState<Profile[]>([]);
+  const [quotes, setQuotes] = useState<QuoteRequest[]>([]);
   // NOTE: these must stay above the early `if (!unlocked) / if (loading) return`
   // statements below — React hooks can't be called conditionally, and putting
   // them after an early return caused a white-screen crash once loading flipped
@@ -174,7 +177,7 @@ const FleetManager: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     if (isSupabaseConfigured) {
-      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes] = await Promise.all([
+      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes, quotesRes] = await Promise.all([
         getHostCars(DANIEL_HOST_ID),
         getHostBookings(DANIEL_HOST_ID),
         getMaintenanceForHost(DANIEL_HOST_ID),
@@ -183,6 +186,7 @@ const FleetManager: React.FC = () => {
         getCustomerNotes(DANIEL_HOST_ID),
         getAllCustomCheckoutFields(DANIEL_HOST_ID),
         getStaffAccounts(),
+        getQuoteRequests(),
       ]);
       setCars((carsRes.data as unknown as Car[]) || sampleCars);
       setBookings((bookingsRes.data as unknown as Booking[]) || sampleBookings);
@@ -192,6 +196,7 @@ const FleetManager: React.FC = () => {
       setCustomerNotes((notesRes.data as unknown as CustomerNote[]) || []);
       setCheckoutFields((fieldsRes.data as unknown as CustomCheckoutField[]) || []);
       setStaff((staffRes.data as unknown as Profile[]) || []);
+      setQuotes((quotesRes.data as unknown as QuoteRequest[]) || []);
     } else {
       setCars(sampleCars);
       setBookings(sampleBookings);
@@ -281,6 +286,22 @@ const FleetManager: React.FC = () => {
     if (error) { toast.error('Refund failed — check Stripe setup'); return; }
     setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, refund_amount: amount, refund_status: 'issued' } : b));
     toast.success(`Refund of ${formatCurrency(amount)} issued`);
+  };
+
+  const handleQuoteStatus = async (quoteId: string, status: QuoteRequestStatus) => {
+    if (isSupabaseConfigured) {
+      const { error } = await updateQuoteRequestStatus(quoteId, status);
+      if (error) { toast.error('Could not update — check Supabase connection'); return; }
+    }
+    setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status } : q));
+    toast.success(`Marked ${status}`);
+  };
+
+  const handleViewQuoteDoc = async (path: string) => {
+    if (!isSupabaseConfigured) { toast.error('Connect Supabase to view uploaded documents'); return; }
+    const { url, error } = await getSignedQuoteDocUrl(path);
+    if (error || !url) { toast.error('Could not load that document'); return; }
+    window.open(url, '_blank');
   };
 
   const handleViewDoc = async (path: string) => {
@@ -457,6 +478,9 @@ const FleetManager: React.FC = () => {
                     {label}
                     {id === 'requests' && pendingCount > 0 && (
                       <span className="ml-auto w-5 h-5 bg-[#E94560] text-white text-xs rounded-full flex items-center justify-center">{pendingCount}</span>
+                    )}
+                    {id === 'quotes' && quotes.filter(q => q.status === 'new').length > 0 && (
+                      <span className="ml-auto w-5 h-5 bg-[#E94560] text-white text-xs rounded-full flex items-center justify-center">{quotes.filter(q => q.status === 'new').length}</span>
                     )}
                     {id === 'maintenance' && dueMaintenanceCount > 0 && (
                       <span className="ml-auto w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{dueMaintenanceCount}</span>
@@ -638,6 +662,64 @@ const FleetManager: React.FC = () => {
                         )}
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeNav === 'quotes' && (
+              <div className="space-y-4 animate-fade-in">
+                <h1 className="text-2xl font-extrabold">Quote Leads</h1>
+                <p className="text-sm text-muted-foreground -mt-2">Instant-quote requests from the homepage form — reach out, then mark them contacted or closed.</p>
+                {quotes.length === 0 ? (
+                  <div className="text-center py-16 bg-white dark:bg-[#1A1A2E] rounded-2xl border text-muted-foreground">
+                    No quote requests yet. They'll appear here as soon as someone fills out the homepage form.
+                  </div>
+                ) : quotes.map(q => (
+                  <div key={q.id} className="bg-white dark:bg-[#1A1A2E] rounded-2xl border p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-extrabold text-base">{q.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          <a href={`tel:${q.phone}`} className="hover:underline">{q.phone}</a> · <a href={`mailto:${q.email}`} className="hover:underline">{q.email}</a>
+                        </p>
+                        <p className="text-sm mt-1">
+                          {q.pickup_date ? formatDate(q.pickup_date) : '—'}{q.pickup_time ? ` at ${q.pickup_time}` : ''} → {q.return_date ? formatDate(q.return_date) : '—'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge variant={q.status === 'new' ? 'warning' : q.status === 'contacted' ? 'electric' : 'secondary'}>{q.status}</Badge>
+                        {q.is_gig_worker && <span className="text-xs text-blue-600 font-semibold">Gig worker</span>}
+                      </div>
+                    </div>
+
+                    {(q.license_photo_path || q.gig_screenshot_path) && (
+                      <div className="flex gap-2 mt-3 flex-wrap">
+                        {q.license_photo_path && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewQuoteDoc(q.license_photo_path!)}>
+                            View license photo
+                          </Button>
+                        )}
+                        {q.gig_screenshot_path && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewQuoteDoc(q.gig_screenshot_path!)}>
+                            View trip screenshot
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 mt-4 pt-4 border-t">
+                      {q.status === 'new' && (
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => handleQuoteStatus(q.id, 'contacted')}>
+                          Mark contacted
+                        </Button>
+                      )}
+                      {q.status !== 'closed' && (
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => handleQuoteStatus(q.id, 'closed')}>
+                          Close lead
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

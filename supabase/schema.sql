@@ -403,6 +403,59 @@ CREATE POLICY "Receivers can mark messages as read"
   USING (auth.uid() = receiver_id);
 
 -- ─────────────────────────────────────────
+-- QUOTE REQUESTS (homepage instant-quote lead form — no login required)
+-- ─────────────────────────────────────────
+CREATE TABLE quote_requests (
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  full_name           TEXT NOT NULL,
+  phone               TEXT NOT NULL,
+  email               TEXT NOT NULL,
+  pickup_date         DATE,
+  pickup_time         TEXT,
+  return_date         DATE,
+  is_gig_worker       BOOLEAN,
+  gig_screenshot_path TEXT,
+  license_photo_path  TEXT,
+  status              TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','closed')),
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE quote_requests ENABLE ROW LEVEL SECURITY;
+
+-- Anyone (even not logged in) can submit a quote request from the homepage
+CREATE POLICY "Anyone can submit a quote request"
+  ON quote_requests FOR INSERT
+  WITH CHECK (true);
+
+-- Only logged-in hosts can read/manage leads
+CREATE POLICY "Hosts can view quote requests"
+  ON quote_requests FOR SELECT
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_host = true));
+
+CREATE POLICY "Hosts can update quote requests"
+  ON quote_requests FOR UPDATE
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_host = true));
+
+CREATE INDEX idx_quote_requests_status ON quote_requests(status);
+
+-- Storage bucket for quote-form uploads (anonymous visitors)
+insert into storage.buckets (id, name, public)
+values ('quote-docs', 'quote-docs', false)
+on conflict (id) do nothing;
+
+create policy "Anyone can upload quote docs"
+  on storage.objects for insert
+  with check (bucket_id = 'quote-docs');
+
+create policy "Hosts can view quote docs"
+  on storage.objects for select
+  using (
+    bucket_id = 'quote-docs' and exists (
+      select 1 from profiles where profiles.id = auth.uid() and profiles.is_host = true
+    )
+  );
+
+-- ─────────────────────────────────────────
 -- STORAGE: verification-docs (gig-worker license photo + trip screenshot)
 -- ─────────────────────────────────────────
 -- Private bucket — files are only readable by the renter who uploaded them
