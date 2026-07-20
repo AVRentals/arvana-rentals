@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, MapPin, Calendar, Shield, Clock, Star,
   ArrowRight, Zap, CheckCircle2, ChevronRight, ChevronDown,
-  Car as CarIcon, KeyRound, DollarSign, RotateCcw, FileText,
+  Car as CarIcon, KeyRound, DollarSign, RotateCcw, FileText, HelpCircle,
 } from 'lucide-react';
 import Footer from '@/components/Footer';
 import { isSupabaseConfigured, createQuoteRequest, uploadQuoteDoc } from '@/lib/supabase';
@@ -22,6 +22,7 @@ const QuoteForm: React.FC = () => {
   const [licensePhoto, setLicensePhoto] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showGigHelp, setShowGigHelp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +124,36 @@ const QuoteForm: React.FC = () => {
       </div>
 
       <div className="mb-3">
-        <label className={labelClass}>Are you an active gig worker? *</label>
+        <div className="flex items-center gap-1.5 mb-1 relative">
+          <label className={`${labelClass} mb-0`}>Are you an active gig worker? *</label>
+          <button
+            type="button"
+            onClick={() => setShowGigHelp(v => !v)}
+            onMouseEnter={() => setShowGigHelp(true)}
+            onMouseLeave={() => setShowGigHelp(false)}
+            className="text-gold-400 hover:text-gold-300 transition-colors -mt-0.5"
+            aria-label="What counts as gig work?"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </button>
+
+          {showGigHelp && (
+            <div className="absolute left-0 top-full mt-2 z-30 w-72 bg-charcoal-900 border border-gold-400/30 rounded-xl p-3.5 shadow-2xl">
+              <p className="text-white text-xs font-bold mb-2">What counts as gig work?</p>
+              <p className="text-white/60 text-xs leading-relaxed mb-2">
+                Driving or delivering for an app-based platform, such as:
+              </p>
+              <ul className="text-white/70 text-xs space-y-1">
+                <li>• <strong>Rideshare:</strong> Uber, Lyft</li>
+                <li>• <strong>Delivery:</strong> Uber Eats, DoorDash, Amazon Flex, Instacart, Grubhub, Roadie</li>
+              </ul>
+              <p className="text-white/50 text-[11px] leading-relaxed mt-2 pt-2 border-t border-white/10">
+                Gig rentals get weekly &amp; monthly rates, but require you to be 25+, rent for at least
+                1 week, and show trips from the last 30 days. Renting for personal use? Choose "No."
+              </p>
+            </div>
+          )}
+        </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => setIsGigWorker(true)}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${isGigWorker === true ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-white/20 text-white/70 hover:border-gold-400/50'}`}>
@@ -162,13 +192,15 @@ const QuoteForm: React.FC = () => {
   );
 };
 
+// NOTE: these are Unsplash stock photos. If any image doesn't match its city,
+// swap the photo ID — or better, replace with your own photos of the actual
+// pickup areas you serve.
 const CITIES = [
-  { name: 'Miami',           img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=280&fit=crop' },
+  { name: 'Miami',           img: 'https://images.unsplash.com/photo-1535498730771-e735b998cd64?w=400&h=280&fit=crop' },
   { name: 'Orlando',         img: 'https://images.unsplash.com/photo-1575089776834-8be34696ffb9?w=400&h=280&fit=crop' },
-  { name: 'Tampa',           img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=280&fit=crop' },
-  { name: 'Fort Lauderdale', img: 'https://images.unsplash.com/photo-1548574505-5e239809ee19?w=400&h=280&fit=crop' },
-  { name: 'Jacksonville',    img: 'https://images.unsplash.com/photo-1587502537104-aac10f5fb6f7?w=400&h=280&fit=crop' },
-  { name: 'Key West',        img: 'https://images.unsplash.com/photo-1572120360610-d971b9d7767c?w=400&h=280&fit=crop' },
+  { name: 'Tampa',           img: 'https://images.unsplash.com/photo-1605723517503-3cadb5818a0c?w=400&h=280&fit=crop' },
+  { name: 'Fort Lauderdale', img: 'https://images.unsplash.com/photo-1596436889106-be35e843f974?w=400&h=280&fit=crop' },
+  { name: 'Key West',        img: 'https://images.unsplash.com/photo-1590080962330-747c6aba8028?w=400&h=280&fit=crop' },
 ];
 
 const STATS = [
@@ -492,7 +524,7 @@ const Home: React.FC = () => {
               Where in Florida?
             </h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {CITIES.map((city, i) => (
               <button
                 key={city.name}
