@@ -44,6 +44,7 @@ const Book: React.FC = () => {
   const [hasOwnInsurance, setHasOwnInsurance] = useState<boolean | null>(null);
   const [insuranceCompany, setInsuranceCompany] = useState('');
   const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
+  const [insuranceFile, setInsuranceFile] = useState<File | null>(null);
 
   // Gig worker (rideshare/delivery) rental path
   const [isGigWorker, setIsGigWorker] = useState<boolean | null>(null);
@@ -195,6 +196,7 @@ const Book: React.FC = () => {
 
     let licensePhotoPath: string | null = null;
     let gigScreenshotPath: string | null = null;
+    let insuranceDocPath: string | null = null;
     // License photo is offered to every renter (required for gig work);
     // the trip screenshot only applies to gig-work rentals.
     if (isSupabaseConfigured && user?.id) {
@@ -205,6 +207,10 @@ const Book: React.FC = () => {
       if (isGigWorker && gigScreenshotFile) {
         const { path } = await uploadVerificationDoc(user.id, gigScreenshotFile, 'gigscreenshot');
         gigScreenshotPath = path;
+      }
+      if (insuranceFile) {
+        const { path } = await uploadVerificationDoc(user.id, insuranceFile, 'insurance');
+        insuranceDocPath = path;
       }
     }
 
@@ -235,6 +241,7 @@ const Book: React.FC = () => {
         date_of_birth: isGigWorker ? dateOfBirth : null,
         license_photo_path: licensePhotoPath,
         gig_screenshot_path: gigScreenshotPath,
+        insurance_doc_path: insuranceDocPath,
       });
       if (!error && data) {
         bookingId = data.id;
@@ -497,26 +504,54 @@ const Book: React.FC = () => {
                     </div>
 
                     {hasOwnInsurance === true && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                        <div>
-                          <Label>Insurance company</Label>
-                          <Input value={insuranceCompany} onChange={e => setInsuranceCompany(e.target.value)}
-                            placeholder="e.g. Progressive" className="mt-1.5" />
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                          <div>
+                            <Label>Insurance company</Label>
+                            <Input value={insuranceCompany} onChange={e => setInsuranceCompany(e.target.value)}
+                              placeholder="e.g. Progressive" className="mt-1.5" />
+                          </div>
+                          <div>
+                            <Label>Policy number</Label>
+                            <Input value={insurancePolicyNumber} onChange={e => setInsurancePolicyNumber(e.target.value)}
+                              placeholder="Policy #" className="mt-1.5" />
+                          </div>
                         </div>
-                        <div>
-                          <Label>Policy number</Label>
-                          <Input value={insurancePolicyNumber} onChange={e => setInsurancePolicyNumber(e.target.value)}
-                            placeholder="Policy #" className="mt-1.5" />
+
+                        <div className="mt-3">
+                          <Label>
+                            Photo of your insurance card
+                            <span className="text-muted-foreground font-normal"> (optional — speeds up approval)</span>
+                          </Label>
+                          <input type="file" accept="image/*,.pdf" className="mt-1.5 w-full text-sm"
+                            onChange={e => setInsuranceFile(e.target.files?.[0] || null)} />
+                          {insuranceFile && (
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {insuranceFile.name}</p>
+                          )}
                         </div>
-                      </div>
+                      </>
                     )}
 
                     {hasOwnInsurance === false && (
-                      <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-400">
-                        <p className="font-bold mb-2">You'll need non-owner insurance before pickup</p>
-                        <p className="mb-2">This covers you to drive without owning a car — it's quick to set up. Most of our renters use <strong>Direct Auto</strong>. Also available in most states: Bristol West, National General, Acceptance Insurance, and sometimes State Farm, Progressive, or GEICO directly.</p>
-                        <p className="text-xs">Availability varies by state — call ahead and confirm coverage. We'll ask for your policy info before handing over the keys.</p>
-                      </div>
+                      <>
+                        <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-400">
+                          <p className="font-bold mb-2">You'll need non-owner insurance before pickup</p>
+                          <p className="mb-2">This covers you to drive without owning a car — it's quick to set up. Most of our renters use <strong>Direct Auto</strong>. Also available in most states: Bristol West, National General, Acceptance Insurance, and sometimes State Farm, Progressive, or GEICO directly.</p>
+                          <p className="text-xs">Availability varies by state — call ahead and confirm coverage. We'll ask for your policy info before handing over the keys.</p>
+                        </div>
+
+                        <div className="mt-3">
+                          <Label>
+                            Already got your policy? Upload it here
+                            <span className="text-muted-foreground font-normal"> (optional)</span>
+                          </Label>
+                          <input type="file" accept="image/*,.pdf" className="mt-1.5 w-full text-sm"
+                            onChange={e => setInsuranceFile(e.target.files?.[0] || null)} />
+                          {insuranceFile && (
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {insuranceFile.name}</p>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
 

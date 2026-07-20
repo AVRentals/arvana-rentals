@@ -108,6 +108,7 @@ export interface Booking {
   date_of_birth?: string;
   license_photo_path?: string;
   gig_screenshot_path?: string;
+  insurance_doc_path?: string;
   created_at: string;
   car?: Car;
   renter?: Profile;

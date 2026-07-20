@@ -121,6 +121,7 @@ CREATE TABLE bookings (
   date_of_birth             DATE,
   license_photo_path        TEXT,
   gig_screenshot_path       TEXT,
+  insurance_doc_path        TEXT,
   created_at                TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT valid_dates CHECK (end_date > start_date)
 );

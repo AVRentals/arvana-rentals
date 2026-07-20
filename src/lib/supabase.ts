@@ -468,7 +468,7 @@ export const getSignedQuoteDocUrl = async (path: string) => {
 // uploading renter's own auth uid so RLS can allow only them + their booking's
 // host to read it back. We store the PATH on the booking, not a URL, and
 // generate a short-lived signed URL on demand when someone needs to view it.
-export const uploadVerificationDoc = async (renterId: string, file: File, kind: 'license' | 'gigscreenshot') => {
+export const uploadVerificationDoc = async (renterId: string, file: File, kind: 'license' | 'gigscreenshot' | 'insurance') => {
   const path = `${renterId}/${Date.now()}-${kind}.${file.name.split('.').pop() || 'jpg'}`;
   const { error } = await supabase.storage.from('verification-docs').upload(path, file);
   if (error) return { path: null, error };
