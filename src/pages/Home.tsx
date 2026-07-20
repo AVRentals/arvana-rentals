@@ -16,9 +16,9 @@ const CITIES = [
 ];
 
 const STATS = [
-  { value: '2',    label: 'Cars in Our Fleet' },
+  { value: '✓',    label: 'Every Car Hand-Picked' },
   { value: '100%', label: 'Personally Inspected' },
-  { value: '24/7', label: 'GPS Monitored' },
+  { value: '24/7', label: 'Roadside Support' },
   { value: '2026', label: 'Locally Owned' },
 ];
 
