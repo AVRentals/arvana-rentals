@@ -45,6 +45,7 @@ const Book: React.FC = () => {
   const [insuranceCompany, setInsuranceCompany] = useState('');
   const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
   const [insuranceFile, setInsuranceFile] = useState<File | null>(null);
+  const [wantsProvidedInsurance, setWantsProvidedInsurance] = useState(false);
 
   // Gig worker (rideshare/delivery) rental path
   const [isGigWorker, setIsGigWorker] = useState<boolean | null>(null);
@@ -147,25 +148,41 @@ const Book: React.FC = () => {
       if (!pickupLocation) { toast.error('Please enter a pickup location'); return; }
     }
     if (step === 2) {
-      if (!driverName || !driverPhone) { toast.error('Please fill in all driver details'); return; }
-      if (!licenseNumber) { toast.error("Please enter your driver's license number"); return; }
+      // Identity — required for every rental, no exceptions.
+      if (!driverName.trim()) { toast.error('Please enter your full name'); return; }
+      if (!driverPhone.trim()) { toast.error('Please enter your phone number'); return; }
+      if (!licenseNumber.trim()) { toast.error("Please enter your driver's license number"); return; }
+      if (!licenseFile) { toast.error("Please upload a photo of your driver's license"); return; }
+
+      // Age — 21+ to rent at all, 25+ for gig-work rentals.
+      if (!dateOfBirth) { toast.error('Please enter your date of birth'); return; }
+      const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (age < 21) { toast.error('Renters must be at least 21 years old'); return; }
+
+      // Insurance — every rental must be covered, either by the renter's own
+      // policy (proof required) or by adding our coverage to the rental.
       if (hasOwnInsurance === null) { toast.error('Please answer whether you have your own auto insurance'); return; }
-      if (hasOwnInsurance && (!insuranceCompany || !insurancePolicyNumber)) {
-        toast.error('Please enter your insurance company and policy number'); return;
+      if (hasOwnInsurance) {
+        if (!insuranceCompany.trim()) { toast.error('Please enter your insurance company'); return; }
+        if (!insurancePolicyNumber.trim()) { toast.error('Please enter your policy number'); return; }
+        if (!insuranceFile) { toast.error('Please upload a photo of your insurance card'); return; }
+      } else if (!wantsProvidedInsurance) {
+        toast.error('Every rental must be insured — either add our coverage or get your own policy first');
+        return;
       }
-      if (!termsAccepted) { toast.error('Please accept the terms and conditions'); return; }
+
+      // Gig-work rentals — stricter rules on top of the above.
       if (isGigWorker === null) { toast.error('Please answer whether this rental is for gig work'); return; }
       if (isGigWorker) {
         if (totalDays < 7) {
           toast.error('Gig-worker rentals require a minimum 1-week booking — go back and adjust your dates'); return;
         }
-        if (!gigPlatform) { toast.error('Please select which gig platform you drive for'); return; }
-        if (!dateOfBirth) { toast.error('Please enter your date of birth'); return; }
-        const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
         if (age < 25) { toast.error('Gig-worker rentals require drivers to be 25 or older'); return; }
-        if (!licenseFile) { toast.error("Please upload a photo of your driver's license"); return; }
+        if (!gigPlatform) { toast.error('Please select which gig platform you drive for'); return; }
         if (!gigScreenshotFile) { toast.error('Please upload a screenshot of your recent gig trips (last 30 days)'); return; }
       }
+
+      if (!termsAccepted) { toast.error('Please accept the terms and conditions'); return; }
       for (const f of customFields) {
         if (f.is_required && !customFieldResponses[f.id]) {
           toast.error(`Please fill in "${f.label}"`); return;
@@ -233,6 +250,7 @@ const Book: React.FC = () => {
         renter_has_insurance: hasOwnInsurance,
         renter_insurance_company: hasOwnInsurance ? insuranceCompany : null,
         renter_insurance_policy_number: hasOwnInsurance ? insurancePolicyNumber : null,
+        wants_provided_insurance: !hasOwnInsurance && wantsProvidedInsurance,
         coupon_code: appliedCoupon?.code || null,
         discount_amount: discountAmount || 0,
         custom_field_responses: customFieldResponses,
@@ -451,9 +469,13 @@ const Book: React.FC = () => {
                     <p className="text-muted-foreground text-sm">Confirm your details for the trip</p>
                   </div>
 
+                  <p className="text-xs text-muted-foreground -mt-4">
+                    All fields below are required — we verify every renter before handing over a car.
+                  </p>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <Label>Full name</Label>
+                      <Label>Full name *</Label>
                       <div className="relative mt-1.5">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input value={driverName} onChange={e => setDriverName(e.target.value)}
@@ -461,7 +483,7 @@ const Book: React.FC = () => {
                       </div>
                     </div>
                     <div>
-                      <Label>Phone number</Label>
+                      <Label>Phone number *</Label>
                       <div className="relative mt-1.5">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input value={driverPhone} onChange={e => setDriverPhone(e.target.value)}
@@ -471,16 +493,19 @@ const Book: React.FC = () => {
                   </div>
 
                   <div>
-                    <Label>Driver's license number</Label>
+                    <Label>Date of birth *</Label>
+                    <Input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} className="mt-1.5" />
+                    <p className="text-xs text-muted-foreground mt-1">Must be 21+ to rent · 25+ for gig-work rentals</p>
+                  </div>
+
+                  <div>
+                    <Label>Driver's license number *</Label>
                     <Input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)}
                       placeholder="e.g. D1234567" className="mt-1.5" />
                     <p className="text-xs text-muted-foreground mt-1">Required for insurance purposes</p>
 
                     <div className="mt-3">
-                      <Label>
-                        Photo of your driver's license
-                        {!isGigWorker && <span className="text-muted-foreground font-normal"> (optional — speeds up approval)</span>}
-                      </Label>
+                      <Label>Photo of your driver's license *</Label>
                       <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
                         onChange={e => setLicenseFile(e.target.files?.[0] || null)} />
                       {licenseFile && (
@@ -491,7 +516,7 @@ const Book: React.FC = () => {
 
                   {/* Insurance */}
                   <div>
-                    <Label>Do you have your own auto insurance?</Label>
+                    <Label>Do you have your own auto insurance? *</Label>
                     <div className="flex gap-2 mt-1.5">
                       <button type="button" onClick={() => setHasOwnInsurance(true)}
                         className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${hasOwnInsurance === true ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-border'}`}>
@@ -507,22 +532,19 @@ const Book: React.FC = () => {
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                           <div>
-                            <Label>Insurance company</Label>
+                            <Label>Insurance company *</Label>
                             <Input value={insuranceCompany} onChange={e => setInsuranceCompany(e.target.value)}
                               placeholder="e.g. Progressive" className="mt-1.5" />
                           </div>
                           <div>
-                            <Label>Policy number</Label>
+                            <Label>Policy number *</Label>
                             <Input value={insurancePolicyNumber} onChange={e => setInsurancePolicyNumber(e.target.value)}
                               placeholder="Policy #" className="mt-1.5" />
                           </div>
                         </div>
 
                         <div className="mt-3">
-                          <Label>
-                            Photo of your insurance card
-                            <span className="text-muted-foreground font-normal"> (optional — speeds up approval)</span>
-                          </Label>
+                          <Label>Photo of your insurance card *</Label>
                           <input type="file" accept="image/*,.pdf" className="mt-1.5 w-full text-sm"
                             onChange={e => setInsuranceFile(e.target.files?.[0] || null)} />
                           {insuranceFile && (
@@ -534,22 +556,36 @@ const Book: React.FC = () => {
 
                     {hasOwnInsurance === false && (
                       <>
-                        <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-400">
-                          <p className="font-bold mb-2">You'll need non-owner insurance before pickup</p>
-                          <p className="mb-2">This covers you to drive without owning a car — it's quick to set up. Most of our renters use <strong>Direct Auto</strong>. Also available in most states: Bristol West, National General, Acceptance Insurance, and sometimes State Farm, Progressive, or GEICO directly.</p>
-                          <p className="text-xs">Availability varies by state — call ahead and confirm coverage. We'll ask for your policy info before handing over the keys.</p>
+                        {/* Option 1 — we cover them */}
+                        <div className="mt-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+                          <p className="font-bold text-sm text-green-800 dark:text-green-400 mb-1">No policy? We can cover you.</p>
+                          <p className="text-sm text-green-700 dark:text-green-500 mb-3">
+                            We offer insurance coverage you can add to your rental — no separate policy needed.
+                            We'll confirm the exact rate with you when we approve your request.
+                          </p>
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <div
+                              onClick={() => setWantsProvidedInsurance(!wantsProvidedInsurance)}
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
+                                wantsProvidedInsurance ? 'bg-green-600 border-green-600' : 'border-green-400'
+                              }`}
+                            >
+                              {wantsProvidedInsurance && <Check className="w-3 h-3 text-white" />}
+                            </div>
+                            <span className="text-sm font-semibold text-green-800 dark:text-green-400">
+                              Yes — add Arvana Rentals coverage to my rental
+                            </span>
+                          </label>
                         </div>
 
-                        <div className="mt-3">
-                          <Label>
-                            Already got your policy? Upload it here
-                            <span className="text-muted-foreground font-normal"> (optional)</span>
-                          </Label>
-                          <input type="file" accept="image/*,.pdf" className="mt-1.5 w-full text-sm"
-                            onChange={e => setInsuranceFile(e.target.files?.[0] || null)} />
-                          {insuranceFile && (
-                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {insuranceFile.name}</p>
-                          )}
+                        {/* Option 2 — they get their own non-owner policy */}
+                        <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-400">
+                          <p className="font-bold mb-2">Or bring your own non-owner policy</p>
+                          <p className="mb-2">A non-owner policy covers you to drive without owning a car. Most of our renters use <strong>Direct Auto</strong>. Also available in most states: Bristol West, National General, Acceptance Insurance, and sometimes State Farm, Progressive, or GEICO directly.</p>
+                          <p className="text-xs mb-3">Availability varies by state — call ahead and confirm coverage.</p>
+                          <p className="text-xs font-semibold">
+                            Once your policy is active, switch to "Yes, I have a policy" above and enter your details.
+                          </p>
                         </div>
                       </>
                     )}
@@ -581,41 +617,31 @@ const Book: React.FC = () => {
                           </ul>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <Label>Gig platform</Label>
-                            <select
-                              className="w-full rounded-xl border px-3 py-2.5 text-sm bg-muted outline-none focus:ring-2 focus:ring-gold-400 mt-1.5"
-                              value={gigPlatform} onChange={e => setGigPlatform(e.target.value)}
-                            >
-                              <option value="">Select…</option>
-                              <option value="Uber">Uber</option>
-                              <option value="Lyft">Lyft</option>
-                              <option value="DoorDash">DoorDash</option>
-                              <option value="Amazon Flex">Amazon Flex</option>
-                              <option value="Instacart">Instacart</option>
-                              <option value="Roadie">Roadie</option>
-                              <option value="Other">Other</option>
-                            </select>
-                          </div>
-                          <div>
-                            <Label>Date of birth</Label>
-                            <Input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} className="mt-1.5" />
-                          </div>
+                        <div>
+                          <Label>Gig platform *</Label>
+                          <select
+                            className="w-full rounded-xl border px-3 py-2.5 text-sm bg-muted outline-none focus:ring-2 focus:ring-gold-400 mt-1.5"
+                            value={gigPlatform} onChange={e => setGigPlatform(e.target.value)}
+                          >
+                            <option value="">Select…</option>
+                            <option value="Uber">Uber</option>
+                            <option value="Lyft">Lyft</option>
+                            <option value="DoorDash">DoorDash</option>
+                            <option value="Amazon Flex">Amazon Flex</option>
+                            <option value="Instacart">Instacart</option>
+                            <option value="Roadie">Roadie</option>
+                            <option value="Other">Other</option>
+                          </select>
                         </div>
 
                         <div>
-                          <Label>Screenshot of your active trips (last 30 days)</Label>
+                          <Label>Screenshot of your active trips (last 30 days) *</Label>
                           <input type="file" accept="image/*" className="mt-1.5 w-full text-sm"
                             onChange={e => setGigScreenshotFile(e.target.files?.[0] || null)} />
                           {gigScreenshotFile && (
                             <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ {gigScreenshotFile.name}</p>
                           )}
                         </div>
-
-                        <p className="text-xs text-muted-foreground">
-                          Your driver's license photo is collected above, under your license number.
-                        </p>
                       </div>
                     )}
                   </div>
@@ -759,6 +785,12 @@ const Book: React.FC = () => {
                         <span className="font-semibold">{gigPlatform}</span>
                       </div>
                     )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Insurance</span>
+                      <span className="font-semibold">
+                        {hasOwnInsurance ? insuranceCompany : wantsProvidedInsurance ? 'Arvana coverage (rate TBC)' : '—'}
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{formatCurrency(car.daily_rate)} × {totalDays} days</span>
                       <span className="font-semibold">{formatCurrency(subtotal)}</span>

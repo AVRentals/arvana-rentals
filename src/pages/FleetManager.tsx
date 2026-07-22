@@ -600,7 +600,10 @@ const FleetManager: React.FC = () => {
                         {b.deposit_status && b.deposit_status !== 'none' && (
                           <span>Deposit: <strong className="capitalize">{b.deposit_status}</strong>{b.deposit_amount ? ` (${formatCurrency(b.deposit_amount)})` : ''}</span>
                         )}
-                        {b.renter_has_insurance === false && (
+                        {b.renter_has_insurance === false && b.wants_provided_insurance && (
+                          <span className="text-green-600 font-semibold">✓ Wants our coverage added — quote them a rate</span>
+                        )}
+                        {b.renter_has_insurance === false && !b.wants_provided_insurance && (
                           <span className="text-amber-600 font-semibold">⚠ Needs non-owner insurance — confirm before handoff</span>
                         )}
                         {b.renter_has_insurance === true && (

@@ -122,6 +122,7 @@ CREATE TABLE bookings (
   license_photo_path        TEXT,
   gig_screenshot_path       TEXT,
   insurance_doc_path        TEXT,
+  wants_provided_insurance  BOOLEAN DEFAULT false,
   created_at                TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT valid_dates CHECK (end_date > start_date)
 );

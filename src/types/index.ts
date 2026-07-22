@@ -109,6 +109,7 @@ export interface Booking {
   license_photo_path?: string;
   gig_screenshot_path?: string;
   insurance_doc_path?: string;
+  wants_provided_insurance?: boolean;
   created_at: string;
   car?: Car;
   renter?: Profile;

@@ -729,7 +729,7 @@ const Home: React.FC = () => {
               },
               {
                 q: 'Is insurance included?',
-                a: "You'll need your own auto insurance or a non-owner policy (most of our renters use Direct Auto — also check Bristol West, National General, or Acceptance Insurance). We'll walk you through it before pickup.",
+                a: "Yes — we offer coverage you can add to your rental if you don't have your own policy. You can also bring your own auto insurance or a non-owner policy (most of our renters use Direct Auto — also check Bristol West, National General, or Acceptance Insurance). Either way, every rental is insured before the keys change hands.",
               },
               {
                 q: 'Is there a deposit?',
