@@ -167,6 +167,30 @@ export interface QuoteRequest {
   created_at: string;
 }
 
+export type ContactMessageStatus = 'new' | 'read' | 'replied';
+
+export interface ContactMessage {
+  id: string;
+  full_name: string;
+  email: string;
+  subject?: string;
+  message: string;
+  status: ContactMessageStatus;
+  created_at: string;
+}
+
+export interface Agreement {
+  id: string;
+  booking_id: string;
+  signer_name: string;
+  signer_email?: string;
+  contract_version: string;
+  contract_text: string;
+  signed_at: string;
+  ip_address?: string;
+  user_agent?: string;
+}
+
 export interface CustomCheckoutField {
   id: string;
   host_id: string;

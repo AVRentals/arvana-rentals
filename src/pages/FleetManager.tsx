@@ -3,7 +3,7 @@ import {
   Car as CarIcon, Calendar, Wrench, LayoutDashboard, Check, X,
   Lock, MapPin, Gauge, DollarSign, AlertTriangle, ExternalLink, Plus, Pencil,
   Tag, Users, MessageSquare, BarChart3, UserCog, Settings as SettingsIcon,
-  Trash2, Send, RotateCcw, ArrowRight, Download,
+  Trash2, Send, RotateCcw, ArrowRight, Download, Inbox, FileSignature,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import {
   getHostCars, getHostBookings, getMaintenanceForHost, updateBookingStatus, depositAction,
   createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
+  getContactMessages, updateContactMessageStatus, getAgreementForBooking,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -26,6 +27,7 @@ import { sampleCars, sampleBookings, sampleMaintenance } from '@/data/sampleData
 import {
   Car, Booking, Maintenance, Coupon, MessageTemplate, MessageEventType,
   CustomerNote, CustomCheckoutField, Profile, OrderStage, QuoteRequest, QuoteRequestStatus,
+  ContactMessage, ContactMessageStatus, Agreement,
 } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -57,6 +59,7 @@ const NAV = [
   { id: 'cars', label: 'My Cars', icon: CarIcon },
   { id: 'requests', label: 'Booking Requests', icon: Calendar },
   { id: 'quotes', label: 'Quote Leads', icon: Send },
+  { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'orders', label: 'Orders & Lot', icon: ArrowRight },
   { id: 'customers', label: 'Customers', icon: Users },
   { id: 'maintenance', label: 'Maintenance', icon: Wrench },
@@ -66,6 +69,17 @@ const NAV = [
   { id: 'staff', label: 'Staff', icon: UserCog },
   { id: 'settings', label: 'Checkout Fields', icon: SettingsIcon },
 ];
+
+// Age from a date of birth — used to sanity-check the 25+ rule against
+// what the renter actually entered, rather than trusting the form.
+const getAge = (dob: string): number => {
+  const birth = new Date(dob);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age;
+};
 
 // ── Simple password gate ────────────────────────────────────────────
 // This is a solo-operator admin panel, not a multi-user auth system —
@@ -173,11 +187,14 @@ const FleetManager: React.FC = () => {
   const [newField, setNewField] = useState({ label: '', field_type: 'text' as 'text' | 'select' | 'checkbox', options: '', is_required: false });
   const [staffEmail, setStaffEmail] = useState('');
   const [staffName, setStaffName] = useState('');
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [openMessageId, setOpenMessageId] = useState<string | null>(null);
+  const [openAgreement, setOpenAgreement] = useState<Agreement | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     if (isSupabaseConfigured) {
-      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes, quotesRes] = await Promise.all([
+      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes, quotesRes, messagesRes] = await Promise.all([
         getHostCars(DANIEL_HOST_ID),
         getHostBookings(DANIEL_HOST_ID),
         getMaintenanceForHost(DANIEL_HOST_ID),
@@ -187,6 +204,7 @@ const FleetManager: React.FC = () => {
         getAllCustomCheckoutFields(DANIEL_HOST_ID),
         getStaffAccounts(),
         getQuoteRequests(),
+        getContactMessages(),
       ]);
       setCars((carsRes.data as unknown as Car[]) || sampleCars);
       setBookings((bookingsRes.data as unknown as Booking[]) || sampleBookings);
@@ -197,6 +215,7 @@ const FleetManager: React.FC = () => {
       setCheckoutFields((fieldsRes.data as unknown as CustomCheckoutField[]) || []);
       setStaff((staffRes.data as unknown as Profile[]) || []);
       setQuotes((quotesRes.data as unknown as QuoteRequest[]) || []);
+      setContactMessages((messagesRes.data as unknown as ContactMessage[]) || []);
     } else {
       setCars(sampleCars);
       setBookings(sampleBookings);
@@ -212,6 +231,7 @@ const FleetManager: React.FC = () => {
 
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
   const dueMaintenanceCount = maintenance.filter(m => m.next_due_date && new Date(m.next_due_date) <= new Date()).length;
+  const unreadMessageCount = contactMessages.filter(m => m.status === 'new').length;
   const filteredBookings = requestFilter === 'all' ? bookings : bookings.filter(b => b.status === requestFilter);
 
   const handleAction = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
@@ -309,6 +329,30 @@ const FleetManager: React.FC = () => {
     const { url, error } = await getSignedDocUrl(path);
     if (error || !url) { toast.error('Could not load that document'); return; }
     window.open(url, '_blank');
+  };
+
+  // ── Contact-page inbox ──
+  const handleMessageStatus = async (messageId: string, status: ContactMessageStatus) => {
+    if (isSupabaseConfigured) {
+      const { error } = await updateContactMessageStatus(messageId, status);
+      if (error) { toast.error('Could not update — check Supabase connection'); return; }
+    }
+    setContactMessages(prev => prev.map(m => m.id === messageId ? { ...m, status } : m));
+  };
+
+  const handleOpenMessage = (m: ContactMessage) => {
+    const nowOpen = openMessageId === m.id ? null : m.id;
+    setOpenMessageId(nowOpen);
+    if (nowOpen && m.status === 'new') handleMessageStatus(m.id, 'read');
+  };
+
+  // ── Signed rental agreement (legal record) ──
+  const handleViewAgreement = async (bookingId: string) => {
+    if (!isSupabaseConfigured) { toast.error('Connect Supabase to view signed agreements'); return; }
+    const { data, error } = await getAgreementForBooking(bookingId);
+    if (error) { toast.error('Could not load the agreement'); return; }
+    if (!data) { toast.error('This renter has not signed the agreement yet'); return; }
+    setOpenAgreement(data as unknown as Agreement);
   };
 
   const handleSendPaymentLink = async (bookingId: string) => {
@@ -482,6 +526,9 @@ const FleetManager: React.FC = () => {
                     {id === 'quotes' && quotes.filter(q => q.status === 'new').length > 0 && (
                       <span className="ml-auto w-5 h-5 bg-[#E94560] text-white text-xs rounded-full flex items-center justify-center">{quotes.filter(q => q.status === 'new').length}</span>
                     )}
+                    {id === 'inbox' && unreadMessageCount > 0 && (
+                      <span className="ml-auto w-5 h-5 bg-[#E94560] text-white text-xs rounded-full flex items-center justify-center">{unreadMessageCount}</span>
+                    )}
                     {id === 'maintenance' && dueMaintenanceCount > 0 && (
                       <span className="ml-auto w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{dueMaintenanceCount}</span>
                     )}
@@ -579,7 +626,9 @@ const FleetManager: React.FC = () => {
                 {filteredBookings.length === 0 ? (
                   <div className="text-center py-16 bg-white dark:bg-[#1A1A2E] rounded-2xl border">
                     <Calendar className="w-12 h-12 text-muted mx-auto mb-3" />
-                    <p className="text-muted-foreground font-semibold">No {requestFilter} requests</p>
+                    <p className="text-muted-foreground font-semibold">
+                      {requestFilter === 'all' ? 'No booking requests yet' : `No ${requestFilter} requests`}
+                    </p>
                   </div>
                 ) : filteredBookings.map(b => (
                   <div key={b.id} className="bg-white dark:bg-[#1A1A2E] rounded-2xl border p-5 shadow-sm">
@@ -607,11 +656,29 @@ const FleetManager: React.FC = () => {
                           <span className="text-amber-600 font-semibold">⚠ Needs non-owner insurance — confirm before handoff</span>
                         )}
                         {b.renter_has_insurance === true && (
-                          <span>Insurance: <strong>{b.renter_insurance_company || 'provided'}</strong></span>
+                          <span>
+                            Insurance: <strong>{b.renter_insurance_company || 'provided'}</strong>
+                            {b.renter_insurance_policy_number ? ` · policy ${b.renter_insurance_policy_number}` : ''}
+                          </span>
+                        )}
+                        {b.date_of_birth && (
+                          <span>DOB: <strong>{formatDate(b.date_of_birth)}</strong> ({getAge(b.date_of_birth)} yrs)</span>
                         )}
                         {b.is_gig_worker && (
                           <span className="text-blue-600 font-semibold">Gig work rental: {b.gig_platform}</span>
                         )}
+                      </div>
+                    )}
+
+                    {/* Answers to the questions you added in the Checkout Fields tab */}
+                    {b.custom_field_responses && Object.keys(b.custom_field_responses).length > 0 && (
+                      <div className="mt-3 pt-3 border-t space-y-1">
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Checkout answers</p>
+                        {Object.entries(b.custom_field_responses).map(([question, answer]) => (
+                          <p key={question} className="text-xs text-muted-foreground">
+                            {question}: <strong className="text-foreground">{String(answer)}</strong>
+                          </p>
+                        ))}
                       </div>
                     )}
 
@@ -634,6 +701,12 @@ const FleetManager: React.FC = () => {
                         )}
                       </div>
                     )}
+
+                    <div className="mt-3">
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleViewAgreement(b.id)}>
+                        <FileSignature className="w-3.5 h-3.5" /> View signed agreement
+                      </Button>
+                    </div>
 
                     {b.status === 'pending' && (
                       <div className="flex gap-2 mt-4 pt-4 border-t">
@@ -728,6 +801,63 @@ const FleetManager: React.FC = () => {
                         </Button>
                       )}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeNav === 'inbox' && (
+              <div className="space-y-4 animate-fade-in">
+                <h1 className="text-2xl font-extrabold">Inbox</h1>
+                <p className="text-sm text-muted-foreground -mt-2">Messages sent through the Contact page. Click one to read it — it's marked read automatically.</p>
+                {contactMessages.length === 0 ? (
+                  <div className="text-center py-16 bg-white dark:bg-[#1A1A2E] rounded-2xl border text-muted-foreground">
+                    No messages yet. Anything sent through the Contact page lands here.
+                  </div>
+                ) : contactMessages.map(m => (
+                  <div key={m.id} className="bg-white dark:bg-[#1A1A2E] rounded-2xl border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => handleOpenMessage(m)}
+                      className="w-full text-left p-5 hover:bg-muted/40 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`text-base truncate ${m.status === 'new' ? 'font-extrabold' : 'font-semibold'}`}>
+                            {m.full_name}
+                            {m.subject && <span className="text-muted-foreground font-normal"> — {m.subject}</span>}
+                          </p>
+                          <p className="text-sm text-muted-foreground truncate">{m.email}</p>
+                          {openMessageId !== m.id && (
+                            <p className="text-sm text-muted-foreground mt-1 truncate">{m.message}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <Badge variant={m.status === 'new' ? 'warning' : m.status === 'read' ? 'electric' : 'secondary'}>{m.status}</Badge>
+                          <span className="text-xs text-muted-foreground">{formatDate(m.created_at)}</span>
+                        </div>
+                      </div>
+                    </button>
+
+                    {openMessageId === m.id && (
+                      <div className="px-5 pb-5 -mt-1">
+                        <p className="text-sm whitespace-pre-wrap border-t pt-4">{m.message}</p>
+                        <div className="flex gap-2 mt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => window.open(`mailto:${m.email}?subject=${encodeURIComponent(`Re: ${m.subject || 'Your message to Arvana Rentals'}`)}`)}
+                          >
+                            Reply by email
+                          </Button>
+                          {m.status !== 'replied' && (
+                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleMessageStatus(m.id, 'replied')}>
+                              Mark replied
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1087,6 +1217,54 @@ const FleetManager: React.FC = () => {
           onCancel={closeCarForm}
           onSave={handleSaveCar}
         />
+      )}
+
+      {/* Signed rental agreement — the legal record of what they agreed to */}
+      {openAgreement && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setOpenAgreement(null)}>
+          <div
+            className="bg-white dark:bg-[#1A1A2E] rounded-2xl border shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 border-b flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-lg flex items-center gap-2">
+                  <FileSignature className="w-5 h-5 text-gold-500" /> Signed agreement
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Signed by <strong className="text-foreground">{openAgreement.signer_name}</strong>
+                  {openAgreement.signer_email ? ` (${openAgreement.signer_email})` : ''} on {formatDate(openAgreement.signed_at)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Contract {openAgreement.contract_version}
+                  {openAgreement.ip_address ? ` · signed from IP ${openAgreement.ip_address}` : ''}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setOpenAgreement(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              <pre className="text-xs whitespace-pre-wrap font-sans leading-relaxed">{openAgreement.contract_text}</pre>
+            </div>
+            <div className="p-4 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5"
+                onClick={() => {
+                  const w = window.open('', '_blank');
+                  if (!w) return;
+                  w.document.write(`<pre style="font-family:system-ui;white-space:pre-wrap;padding:2rem;line-height:1.6">${openAgreement.contract_text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] || c))}</pre>`);
+                  w.document.close();
+                  w.print();
+                }}
+              >
+                <Download className="w-3.5 h-3.5" /> Print / save as PDF
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

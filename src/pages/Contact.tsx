@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, MessageCircle, ArrowRight } from 'lucide-react';
 import Footer from '@/components/Footer';
+import { isSupabaseConfigured, createContactMessage } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 
 const FAQS = [
@@ -14,14 +15,32 @@ const Contact: React.FC = () => {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
+
+    // Until the database is connected there is nowhere to put the message —
+    // say so honestly rather than pretending it was delivered.
+    if (!isSupabaseConfigured) {
+      toast.error('Our message form isn\'t live yet — please email info@arvanarentals.com and we\'ll get right back to you.');
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await createContactMessage({
+      full_name: form.name,
+      email: form.email,
+      subject: form.subject,
+      message: form.message,
+    });
+
+    if (error) {
+      toast.error('Something went wrong sending that. Please email info@arvanarentals.com instead.');
+    } else {
       toast.success('Message sent! We\'ll get back to you within 24 hours.');
       setForm({ name: '', email: '', subject: '', message: '' });
-      setLoading(false);
-    }, 1200);
+    }
+    setLoading(false);
   };
 
   return (

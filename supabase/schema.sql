@@ -499,3 +499,35 @@ CREATE INDEX idx_bookings_status ON bookings(status);
 CREATE INDEX idx_reviews_car_id ON reviews(car_id);
 CREATE INDEX idx_messages_booking_id ON messages(booking_id);
 CREATE INDEX idx_messages_receiver_id ON messages(receiver_id);
+
+-- ─────────────────────────────────────────
+-- CONTACT MESSAGES (the /contact page form)
+-- Anyone can send one, only the host can read them.
+-- ─────────────────────────────────────────
+CREATE TABLE contact_messages (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  full_name   TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  subject     TEXT,
+  message     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','read','replied')),
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE contact_messages ENABLE ROW LEVEL SECURITY;
+
+-- Anyone (even not logged in) can send a message from the contact page
+CREATE POLICY "Anyone can send a contact message"
+  ON contact_messages FOR INSERT
+  WITH CHECK (true);
+
+-- Only logged-in hosts can read them
+CREATE POLICY "Hosts can view contact messages"
+  ON contact_messages FOR SELECT
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_host = true));
+
+CREATE POLICY "Hosts can update contact messages"
+  ON contact_messages FOR UPDATE
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_host = true));
+
+CREATE INDEX idx_contact_messages_status ON contact_messages(status);

@@ -450,6 +450,42 @@ export const updateQuoteRequestStatus = async (quoteId: string, status: string) 
   return { data, error };
 };
 
+// ─────────────────────────────────────────
+// CONTACT MESSAGES (the /contact page form)
+// ─────────────────────────────────────────
+export const createContactMessage = async (messageData: Record<string, unknown>) => {
+  const { data, error } = await supabase.from('contact_messages').insert(messageData).select().single();
+  return { data, error };
+};
+
+export const getContactMessages = async () => {
+  const { data, error } = await supabase
+    .from('contact_messages')
+    .select('*')
+    .order('created_at', { ascending: false });
+  return { data, error };
+};
+
+export const updateContactMessageStatus = async (messageId: string, status: string) => {
+  const { data, error } = await supabase
+    .from('contact_messages')
+    .update({ status })
+    .eq('id', messageId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+// The signed rental agreement tied to a booking (legal record).
+export const getAgreementForBooking = async (bookingId: string) => {
+  const { data, error } = await supabase
+    .from('agreements')
+    .select('*')
+    .eq('booking_id', bookingId)
+    .maybeSingle();
+  return { data, error };
+};
+
 // Anonymous upload from the homepage quote form (quote-docs bucket).
 export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreenshot') => {
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${kind}.${file.name.split('.').pop() || 'jpg'}`;
