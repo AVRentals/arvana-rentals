@@ -18,8 +18,6 @@ import About from '@/pages/About';
 import Contact from '@/pages/Contact';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
-import Careers from '@/pages/Careers';
-import Blog from '@/pages/Blog';
 import NotFound from '@/pages/NotFound';
 
 // Scroll to top on route change
@@ -79,8 +77,10 @@ const AppRoutes: React.FC = () => {
         <Route path="/contact" element={<Contact />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
-        <Route path="/careers" element={<Careers />} />
-        <Route path="/blog" element={<Blog />} />
+        {/* Careers + Blog are unpublished: both pages still contain demo content
+            (fake job openings, placeholder articles). Files kept in src/pages so
+            they can be brought back once there's real content — re-add the routes
+            and the footer links in Footer.tsx at that point. */}
 
         {/* 404 */}
         <Route path="*" element={<NotFound />} />

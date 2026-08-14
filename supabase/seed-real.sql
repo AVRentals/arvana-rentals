@@ -30,7 +30,7 @@ INSERT INTO cars (
   'Toyota', 'Corolla', 2014, 'White', 'SPZQ90', '2T1BURHE4EC040001',
   'Clean, reliable daily driver. Great on gas and easy to park. Full pre-rental inspection completed before every trip.',
   'economy', 57.00, 400.00, 1600.00,
-  'TBD', 'TBD', 'FL', 5, 'auto', 'gasoline',
+  'Miami, FL', 'Miami', 'FL', 5, 'auto', 'gasoline',
   ARRAY['Bluetooth','Backup Camera','AC','USB'],
   ARRAY['https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&h=500&fit=crop'],
   true, true, 0, 0,
@@ -50,7 +50,7 @@ INSERT INTO cars (
   'Toyota', 'Camry', 2018, 'Black', 'TBD', '4T1B11HK7JU023752',
   'Comfortable, roomy sedan. Recently acquired — full inspection scheduled before first rental.',
   'economy', 65.00, NULL, NULL,
-  'TBD', 'TBD', 'FL', 5, 'auto', 'gasoline',
+  'Miami, FL', 'Miami', 'FL', 5, 'auto', 'gasoline',
   ARRAY['Bluetooth','Backup Camera','AC','USB'],
   ARRAY['https://images.unsplash.com/photo-1590362891991-f776e747a588?w=800&h=500&fit=crop'],
   true, true, 0, 0,
@@ -58,7 +58,7 @@ INSERT INTO cars (
 );
 
 -- ─────────────────────────────────────────
--- MAINTENANCE (mirrors the Turo Business Blueprint spreadsheet)
+-- MAINTENANCE (mirrors the Private Rental Business Blueprint spreadsheet)
 -- ─────────────────────────────────────────
 INSERT INTO maintenance (car_id, service_type, mileage, next_due_date, next_due_miles, notes)
 SELECT id, 'Pre-Rental Full Inspection', 137000, CURRENT_DATE, 137000,

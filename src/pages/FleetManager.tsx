@@ -848,7 +848,7 @@ const FleetManager: React.FC = () => {
                   );
                 })}
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <ExternalLink className="w-3 h-3" /> Full maintenance history still lives in your Turo Business Blueprint spreadsheet — this mirrors the same due dates.
+                  <ExternalLink className="w-3 h-3" /> Full maintenance history still lives in your Private Rental Business Blueprint spreadsheet — this mirrors the same due dates.
                 </p>
               </div>
             )}

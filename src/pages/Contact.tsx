@@ -4,10 +4,10 @@ import Footer from '@/components/Footer';
 import toast from 'react-hot-toast';
 
 const FAQS = [
-  { q: 'How do I cancel a booking?', a: 'You can cancel a booking from your Dashboard under My Trips. Free cancellation is available up to 24 hours before pickup.' },
-  { q: 'Is insurance included?', a: 'Every trip includes $1M liability coverage automatically. You can add additional protection during checkout.' },
-  { q: 'What if I have an issue during my trip?', a: 'Our 24/7 roadside assistance team is just a call away. You\'ll find the support number in your trip confirmation.' },
-  { q: 'How do I know a car is safe?', a: 'Every vehicle passes a 150-point inspection before being listed. We verify ownership, registration, and service history.' },
+  { q: 'How do I cancel a booking?', a: 'Just reach out — call, text, or email us. Cancel at least 24 hours before pickup and there\'s no charge.' },
+  { q: 'Is insurance included?', a: 'We offer coverage you can add to your rental if you don\'t have your own policy. You can also bring your own auto insurance or a non-owner policy. Either way, the car is insured before the keys change hands.' },
+  { q: 'What if I have an issue during my trip?', a: 'Call or text us directly — you\'re dealing with the owner, not a call center. Roadside assistance details come with your rental agreement.' },
+  { q: 'How do I know a car is safe?', a: 'Every car is owned, maintained, and inspected by us before it goes out. Registration and service records are current, and we\'ll show them to you if you ask.' },
 ];
 
 const Contact: React.FC = () => {

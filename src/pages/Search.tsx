@@ -210,11 +210,11 @@ const Search: React.FC = () => {
 
       <div className="border-t" />
 
-      {/* Instant book toggle */}
+      {/* Availability toggle */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold text-sm">Instant book</h3>
-          <p className="text-xs text-muted-foreground">No approval needed</p>
+          <h3 className="font-bold text-sm">Available now</h3>
+          <p className="text-xs text-muted-foreground">Ready for pickup</p>
         </div>
         <button
           onClick={() => setInstantBook(!instantBook)}

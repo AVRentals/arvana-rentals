@@ -73,11 +73,11 @@ const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
             )}
           </div>
 
-          {/* Instant badge */}
+          {/* Availability badge */}
           {car.is_available && (
             <div className="absolute bottom-3 left-3">
               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/90 text-white backdrop-blur-sm flex items-center gap-1">
-                ⚡ Instant Book
+                Available now
               </span>
             </div>
           )}
@@ -106,12 +106,16 @@ const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
 
           {/* Rating + location */}
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground mb-3">
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 fill-gold-400 text-gold-400" />
-              <span className="font-bold text-foreground">{car.rating.toFixed(1)}</span>
-              <span>({car.total_trips})</span>
-            </div>
-            <span className="text-border">·</span>
+            {car.total_trips > 0 && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-gold-400 text-gold-400" />
+                  <span className="font-bold text-foreground">{car.rating.toFixed(1)}</span>
+                  <span>({car.total_trips})</span>
+                </div>
+                <span className="text-border">·</span>
+              </>
+            )}
             <div className="flex items-center gap-0.5">
               <MapPin className="w-2.5 h-2.5" />
               <span>{car.city}</span>

@@ -178,7 +178,7 @@ const CarDetail: React.FC = () => {
 
       <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
         <Shield className="w-3.5 h-3.5 text-green-500" />
-        <span>$1M insurance included on every trip</span>
+        <span>Coverage available — or bring your own policy</span>
       </div>
     </div>
   );

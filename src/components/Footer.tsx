@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Instagram, Facebook, Youtube } from 'lucide-react';
+import { TRUST_LINE } from '@/data/companyStats';
 
 const XIcon = () => (
   <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
@@ -13,11 +14,8 @@ const LINKS = [
     title: 'Explore',
     links: [
       { label: 'Browse All Cars',     to: '/search' },
-      { label: 'Economy Cars',        to: '/search?category=economy' },
-      { label: 'Luxury Cars',         to: '/search?category=luxury' },
-      { label: 'Electric Vehicles',   to: '/search?category=electric' },
-      { label: 'Sports Cars',         to: '/search?category=sports' },
-      { label: 'SUVs',                to: '/search?category=suv' },
+      { label: 'Weekly & Monthly',    to: '/search' },
+      { label: 'Get a Free Quote',    to: '/#quote' },
     ],
   },
   {
@@ -34,10 +32,9 @@ const LINKS = [
     title: 'Company',
     links: [
       { label: 'About Us',            to: '/about' },
-      { label: 'Careers',             to: '/careers' },
-      { label: 'Blog',                to: '/blog' },
-      { label: 'Press',               to: '/contact' },
       { label: 'Contact',             to: '/contact' },
+      { label: 'Terms of Service',    to: '/terms' },
+      { label: 'Privacy Policy',      to: '/privacy' },
     ],
   },
 ];
@@ -71,8 +68,9 @@ const Footer: React.FC = () => (
           </Link>
 
           <p className="text-white/50 text-sm leading-relaxed mb-6 max-w-xs">
-            Florida's premier private car rental. Discover thousands of verified vehicles
-            across the Sunshine State — book in minutes, drive in style.
+            Locally owned private car rental serving Miami and South Florida.
+            Every car hand-picked, personally inspected, and rented by a real
+            person — not an app.
           </p>
 
           {/* Social icons */}
@@ -92,7 +90,7 @@ const Footer: React.FC = () => (
           {/* Trust badge */}
           <div className="mt-8 inline-flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2">
             <span className="text-gold-400 text-sm">★★★★★</span>
-            <span className="text-white/50 text-xs">Rated 4.9 by 50K+ Florida renters</span>
+            <span className="text-white/50 text-xs">{TRUST_LINE}</span>
           </div>
         </div>
 
