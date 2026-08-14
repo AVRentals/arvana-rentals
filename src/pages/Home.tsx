@@ -38,6 +38,15 @@ const QuoteForm: React.FC = () => {
     }
 
     setSubmitting(true);
+
+    // Until the database is connected there is nowhere to store the request —
+    // never show a fake "Request received!" for a lead that went nowhere.
+    if (!isSupabaseConfigured) {
+      toast.error('Our online form isn\'t live yet — please call or email us and we\'ll get you a quote today.');
+      setSubmitting(false);
+      return;
+    }
+
     try {
       let gigPath: string | null = null;
       let licPath: string | null = null;
