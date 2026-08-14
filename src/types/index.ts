@@ -180,18 +180,6 @@ export interface ContactMessage {
   created_at: string;
 }
 
-export interface Agreement {
-  id: string;
-  booking_id: string;
-  signer_name: string;
-  signer_email?: string;
-  contract_version: string;
-  contract_text: string;
-  signed_at: string;
-  ip_address?: string;
-  user_agent?: string;
-}
-
 export interface CustomCheckoutField {
   id: string;
   host_id: string;
