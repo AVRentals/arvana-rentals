@@ -102,6 +102,7 @@ export interface Booking {
   refund_status?: RefundStatus;
   refunded_at?: string;
   balance_due?: number;
+  amount_paid?: number;
   custom_field_responses?: Record<string, string | boolean>;
   is_gig_worker?: boolean;
   gig_platform?: string;

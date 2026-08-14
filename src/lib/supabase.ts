@@ -476,6 +476,18 @@ export const updateContactMessageStatus = async (messageId: string, status: stri
   return { data, error };
 };
 
+// Record money collected outside Stripe (cash, Zelle, Cash App...) so the
+// Payment Status board reflects reality, not just card payments.
+export const recordManualPayment = async (bookingId: string, amountPaid: number, balanceDue: number) => {
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({ amount_paid: amountPaid, balance_due: balanceDue })
+    .eq('id', bookingId)
+    .select()
+    .single();
+  return { data, error };
+};
+
 // The signed rental agreement tied to a booking (legal record).
 export const getAgreementForBooking = async (bookingId: string) => {
   const { data, error } = await supabase

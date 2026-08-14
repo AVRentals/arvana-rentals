@@ -38,10 +38,27 @@ Deno.serve(async (req) => {
       const session = event.data.object as Stripe.Checkout.Session;
       const bookingId = session.metadata?.booking_id;
       const type = session.metadata?.type;
-      if (bookingId && type === 'rent') {
-        // Rent paid — this is the point where you'd move status from
-        // 'pending' to 'confirmed', since by now ID + payment are both done.
-        await supabase.from('bookings').update({ status: 'confirmed' }).eq('id', bookingId);
+      // Any money actually collected (rent checkout or an ad-hoc payment link)
+      // adds to amount_paid, which is what drives the Payment Status board.
+      // Deposits are excluded — a held deposit isn't rental income.
+      if (bookingId && (type === 'rent' || type === 'payment_link')) {
+        const paidNow = (session.amount_total ?? 0) / 100;
+        const { data: booking } = await supabase
+          .from('bookings')
+          .select('amount_paid, total_amount')
+          .eq('id', bookingId)
+          .single();
+        const newPaid = Number(booking?.amount_paid ?? 0) + paidNow;
+        const update: Record<string, unknown> = {
+          amount_paid: newPaid,
+          balance_due: Math.max(0, Number(booking?.total_amount ?? 0) - newPaid),
+        };
+        if (type === 'rent') {
+          // Rent paid — this is the point where status moves from 'pending'
+          // to 'confirmed', since by now ID + payment are both done.
+          update.status = 'confirmed';
+        }
+        await supabase.from('bookings').update(update).eq('id', bookingId);
       }
       // Deposit sessions already get their status set to 'held' at creation time
       // (see create-deposit-checkout) — nothing further needed here for those.

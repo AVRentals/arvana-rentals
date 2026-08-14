@@ -115,6 +115,11 @@ CREATE TABLE bookings (
                               CHECK (refund_status IN ('none','requested','issued')),
   refunded_at               TIMESTAMPTZ,
   balance_due               NUMERIC(10,2),
+  -- Total actually collected for this rental, however it was paid (Stripe,
+  -- cash, Zelle...). Stripe payments add to this via the webhook; cash gets
+  -- recorded by hand with "Record payment" in Fleet Manager. Payment status
+  -- on the Orders board is derived from this vs total_amount.
+  amount_paid               NUMERIC(10,2) DEFAULT 0,
   custom_field_responses    JSONB DEFAULT '{}',
   is_gig_worker             BOOLEAN DEFAULT false,
   gig_platform              TEXT,

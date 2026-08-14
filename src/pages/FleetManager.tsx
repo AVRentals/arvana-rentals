@@ -14,7 +14,7 @@ import {
   getHostCars, getHostBookings, getMaintenanceForHost, updateBookingStatus, depositAction,
   createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
-  getContactMessages, updateContactMessageStatus, getAgreementForBooking,
+  getContactMessages, updateContactMessageStatus, getAgreementForBooking, recordManualPayment,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -69,6 +69,44 @@ const NAV = [
   { id: 'staff', label: 'Staff', icon: UserCog },
   { id: 'settings', label: 'Checkout Fields', icon: SettingsIcon },
 ];
+
+// ── Payment status (Orders & Lot board) ─────────────────────────────
+// Derived from what's actually been collected (amount_paid) against the
+// rental total. "Process deposit" is separate: it means a deposit is still
+// being held on their card and needs releasing or capturing.
+type PaymentStatus = 'payment_due' | 'partially_paid' | 'paid' | 'overpaid' | 'process_deposit';
+
+const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  payment_due: 'Payment Due',
+  partially_paid: 'Partially Paid',
+  paid: 'Paid',
+  overpaid: 'Overpaid',
+  process_deposit: 'Process Deposit',
+};
+
+const PAYMENT_ORDER: PaymentStatus[] = ['payment_due', 'partially_paid', 'paid', 'overpaid', 'process_deposit'];
+
+const PAYMENT_COLORS: Record<PaymentStatus, string> = {
+  payment_due: 'text-[#E94560]',
+  partially_paid: 'text-amber-600',
+  paid: 'text-green-600',
+  overpaid: 'text-blue-600',
+  process_deposit: 'text-purple-600',
+};
+
+// A booking can match more than one — an unpaid rental whose deposit also
+// needs releasing shows under both Payment Due and Process Deposit.
+const paymentStatusesFor = (b: Booking): PaymentStatus[] => {
+  const statuses: PaymentStatus[] = [];
+  const total = Number(b.total_amount ?? 0);
+  const paid = Number(b.amount_paid ?? 0);
+  if (paid <= 0) statuses.push('payment_due');
+  else if (paid < total) statuses.push('partially_paid');
+  else if (paid === total) statuses.push('paid');
+  else statuses.push('overpaid');
+  if (b.deposit_status === 'held') statuses.push('process_deposit');
+  return statuses;
+};
 
 // Age from a date of birth — used to sanity-check the 25+ rule against
 // what the renter actually entered, rather than trusting the form.
@@ -190,6 +228,7 @@ const FleetManager: React.FC = () => {
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [openMessageId, setOpenMessageId] = useState<string | null>(null);
   const [openAgreement, setOpenAgreement] = useState<Agreement | null>(null);
+  const [paymentFilters, setPaymentFilters] = useState<PaymentStatus[]>([]);
 
   const loadData = async () => {
     setLoading(true);
@@ -344,6 +383,29 @@ const FleetManager: React.FC = () => {
     const nowOpen = openMessageId === m.id ? null : m.id;
     setOpenMessageId(nowOpen);
     if (nowOpen && m.status === 'new') handleMessageStatus(m.id, 'read');
+  };
+
+  // ── Recording money collected outside Stripe ──
+  const handleRecordPayment = async (b: Booking) => {
+    const alreadyPaid = Number(b.amount_paid ?? 0);
+    const input = window.prompt(
+      `Total collected so far for this rental (rental total ${formatCurrency(b.total_amount)}):`,
+      String(alreadyPaid),
+    );
+    if (input === null) return;
+    const paid = Number(input);
+    if (Number.isNaN(paid) || paid < 0) { toast.error('Enter a valid amount'); return; }
+    const balance = Math.max(0, Number(b.total_amount) - paid);
+    if (isSupabaseConfigured) {
+      const { error } = await recordManualPayment(b.id, paid, balance);
+      if (error) { toast.error('Could not save — check Supabase connection'); return; }
+    }
+    setBookings(prev => prev.map(x => x.id === b.id ? { ...x, amount_paid: paid, balance_due: balance } : x));
+    toast.success(balance > 0 ? `Recorded — ${formatCurrency(balance)} still owed` : 'Paid in full');
+  };
+
+  const togglePaymentFilter = (status: PaymentStatus) => {
+    setPaymentFilters(prev => prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]);
   };
 
   // ── Signed rental agreement (legal record) ──
@@ -866,7 +928,115 @@ const FleetManager: React.FC = () => {
             {activeNav === 'orders' && (
               <div className="space-y-4 animate-fade-in">
                 <h1 className="text-2xl font-extrabold">Orders & Lot</h1>
-                <p className="text-sm text-muted-foreground -mt-2">Every active trip, tracked through Reserved → Picked up → Returned — like Fleetwire's order stages.</p>
+                <p className="text-sm text-muted-foreground -mt-2">Every active trip, tracked through Reserved → Picked up → Returned.</p>
+
+                {/* Payment Status — who owes you money while they've got your car */}
+                {(() => {
+                  const inPossession = bookings.filter(b =>
+                    (b.order_stage || 'reserved') === 'picked_up' && ['confirmed', 'active'].includes(b.status)
+                  );
+                  const shown = paymentFilters.length === 0
+                    ? inPossession
+                    : inPossession.filter(b => paymentStatusesFor(b).some(s => paymentFilters.includes(s)));
+
+                  return (
+                    <div className="bg-white dark:bg-[#1A1A2E] rounded-2xl border p-5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <h2 className="font-extrabold">Payment Status</h2>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Cars currently in a customer's possession — {inPossession.length} out
+                          </p>
+                        </div>
+                        {paymentFilters.length > 0 && (
+                          <Button variant="outline" size="sm" onClick={() => setPaymentFilters([])}>Clear filters</Button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-4">
+                        {PAYMENT_ORDER.map(status => {
+                          const count = inPossession.filter(b => paymentStatusesFor(b).includes(status)).length;
+                          const active = paymentFilters.includes(status);
+                          return (
+                            <button
+                              key={status}
+                              onClick={() => togglePaymentFilter(status)}
+                              className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all ${
+                                active ? 'border-gold-400 bg-gold-50 dark:bg-gold-900/20' : 'hover:border-gold-300/60 hover:bg-muted/40'
+                              }`}
+                            >
+                              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                                active ? 'bg-gold-500 border-gold-500' : 'border-muted-foreground/40'
+                              }`}>
+                                {active && <Check className="w-3 h-3 text-white" />}
+                              </span>
+                              <span className="text-[13px] font-semibold leading-tight">{PAYMENT_LABELS[status]}</span>
+                              <span className={`ml-auto text-sm font-bold ${count > 0 ? PAYMENT_COLORS[status] : 'text-muted-foreground'}`}>
+                                ({count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {inPossession.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-6">
+                            No cars are out right now. Anything you mark "Picked up" below shows here with its payment status.
+                          </p>
+                        ) : shown.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-6">Nothing matches those filters.</p>
+                        ) : shown.map(b => {
+                          const paid = Number(b.amount_paid ?? 0);
+                          const owed = Math.max(0, Number(b.total_amount) - paid);
+                          return (
+                            <div key={b.id} className="border rounded-xl p-4">
+                              <div className="flex items-start justify-between gap-3 flex-wrap">
+                                <div>
+                                  <p className="font-bold text-sm">{b.car?.year} {b.car?.make} {b.car?.model}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {b.renter?.full_name || 'Renter'} · due back {formatDate(b.end_date)}
+                                  </p>
+                                  <p className="text-sm mt-1">
+                                    Paid <strong>{formatCurrency(paid)}</strong> of {formatCurrency(b.total_amount)}
+                                    {owed > 0 && <span className="text-[#E94560] font-bold"> · {formatCurrency(owed)} owed</span>}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 justify-end">
+                                  {paymentStatusesFor(b).map(s => (
+                                    <Badge key={s} variant={s === 'paid' ? 'success' : s === 'payment_due' ? 'destructive' : 'warning'}>
+                                      {PAYMENT_LABELS[s]}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex gap-2 mt-3 flex-wrap">
+                                <Button variant="outline" size="sm" onClick={() => handleRecordPayment(b)}>
+                                  Record payment
+                                </Button>
+                                {owed > 0 && (
+                                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleSendPaymentLink(b.id)}>
+                                    <Send className="w-3.5 h-3.5" /> Send payment link
+                                  </Button>
+                                )}
+                                {b.deposit_status === 'held' && (
+                                  <>
+                                    <Button variant="outline" size="sm" onClick={() => handleDeposit(b.id, 'release')}>
+                                      Release deposit
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="text-[#E94560] border-[#E94560]" onClick={() => handleDeposit(b.id, 'capture_full')}>
+                                      Capture deposit
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {cars.map(car => {
