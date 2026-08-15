@@ -9,8 +9,13 @@ import toast from 'react-hot-toast';
 
 const Signup: React.FC = () => {
   const navigate = useNavigate();
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  // Approval is matched on the email they applied with, so the approval
+  // message links here with ?email=... and ?name=... pre-filled. Signing up
+  // with a different address silently looks like "never applied".
+  const inviteParams = new URLSearchParams(window.location.search);
+  const invitedEmail = inviteParams.get('email') || '';
+  const [fullName, setFullName] = useState(inviteParams.get('name') || '');
+  const [email, setEmail] = useState(invitedEmail);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const isHost = false;
@@ -86,9 +91,23 @@ const Signup: React.FC = () => {
           <p className="text-muted-foreground">For approved renters</p>
         </div>
 
+        {invitedEmail && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-300/60 dark:border-green-700/40 rounded-2xl p-4 mb-5">
+            <p className="text-sm font-bold text-charcoal-900 dark:text-white mb-1">
+              You're approved — welcome aboard.
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Finish setting up your account below. Keep the email as{' '}
+              <strong className="text-foreground">{invitedEmail}</strong> — that's the one
+              tied to your approval.
+            </p>
+          </div>
+        )}
+
         {/* Accounts don't skip screening. Anyone can make one, but renting
             still requires an approved application with license, insurance
             and (for gig drivers) proof of recent trips. */}
+        {!invitedEmail && (
         <div className="bg-gold-50 dark:bg-gold-900/20 border border-gold-300/60 dark:border-gold-700/40 rounded-2xl p-4 mb-5">
           <p className="text-sm font-bold text-charcoal-900 dark:text-white mb-1">
             Haven't applied yet?
@@ -103,6 +122,7 @@ const Signup: React.FC = () => {
             and we'll come back to you within 24 hours.
           </p>
         </div>
+        )}
 
         <div className="bg-white dark:bg-charcoal-900 rounded-3xl shadow-xl border border-border p-8">
           {/* Social buttons */}

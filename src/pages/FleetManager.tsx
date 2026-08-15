@@ -485,8 +485,9 @@ const FleetManager: React.FC = () => {
   // from Daniel's own number instead of requiring carrier registration for
   // automated SMS.
   const textApplicant = (q: QuoteRequest) => {
+    const signupLink = `${window.location.origin}/signup?email=${encodeURIComponent(q.email)}&name=${encodeURIComponent(q.full_name)}`;
     const msg = q.status === 'approved'
-      ? `Hi ${q.full_name.split(' ')[0]}, it's Arvana Rentals — you're approved! Create your account at ${window.location.origin}/signup with this same email and we'll get your car set up.`
+      ? `Hi ${q.full_name.split(' ')[0]}, it's Arvana Rentals — you're approved! Set up your account here and we'll get your car ready: ${signupLink}`
       : `Hi ${q.full_name.split(' ')[0]}, it's Arvana Rentals about your rental application —`;
     window.open(`sms:${q.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(msg)}`);
   };

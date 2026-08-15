@@ -20,7 +20,7 @@ const SITE_URL = Deno.env.get('SITE_URL') || 'https://arvanarentals.com';
 
 const firstName = (fullName: string) => (fullName || '').trim().split(/\s+/)[0] || 'there';
 
-const approvedEmail = (name: string, car?: string) => ({
+const approvedEmail = (name: string, email: string, car?: string) => ({
   subject: 'You\'re approved — Arvana Rentals',
   html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;color:#1a1a2e;line-height:1.6">
@@ -30,14 +30,15 @@ const approvedEmail = (name: string, car?: string) => ({
       </p>
       <p style="margin:0 0 14px"><strong>Next step:</strong> create your account so we can finalize your rental.</p>
       <p style="margin:0 0 22px">
-        <a href="${SITE_URL}/signup"
+        <a href="${SITE_URL}/signup?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}"
            style="background:#E8B54B;color:#1a1a2e;padding:12px 22px;border-radius:12px;
                   text-decoration:none;font-weight:700;display:inline-block">
           Create your account
         </a>
       </p>
       <p style="margin:0 0 14px">
-        Use the same email you applied with (${'this address'}) so we can match you up.
+        That link already has your details filled in — keep the email as
+        <strong>${email}</strong> so we can match you to your approval.
       </p>
       <p style="margin:0 0 14px">
         Once you're in, we'll confirm your dates, go over the agreement, and set a pickup time.
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
     if (error || !application) throw new Error('Application not found');
 
     const body = decision === 'approved'
-      ? approvedEmail(application.full_name, application.car_interest)
+      ? approvedEmail(application.full_name, application.email, application.car_interest)
       : declinedEmail(application.full_name);
 
     const res = await fetch('https://api.resend.com/emails', {
