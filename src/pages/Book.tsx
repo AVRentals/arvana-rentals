@@ -12,6 +12,7 @@ import { formatCurrency, formatDate, calculateDays, calculateBookingTotal } from
 import { useAuth } from '@/context/AuthContext';
 import {
   createBooking, createAgreement, getCarByIdWithFallback, isSupabaseConfigured, DANIEL_HOST_ID,
+  hasApprovedApplication,
   lookupCoupon, getCustomCheckoutFields, sendBookingNotification,
   uploadVerificationDoc,
 } from '@/lib/supabase';
@@ -29,6 +30,9 @@ const Book: React.FC = () => {
   const [car, setCar] = useState<Car | null>(null);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  // null = still checking. Booking is gated on an approved application, not
+  // on merely having an account — see hasApprovedApplication().
+  const [approved, setApproved] = useState<boolean | null>(null);
 
   // Step 1 state
   const [startDate, setStartDate] = useState(searchParams.get('start') || '');
@@ -97,7 +101,53 @@ const Book: React.FC = () => {
     }
   }, [profile]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!isSupabaseConfigured) { setApproved(true); return; }
+    const email = user?.email || profile?.email;
+    if (!email) { setApproved(false); return; }
+    hasApprovedApplication(email).then(ok => { if (!cancelled) setApproved(ok); });
+    return () => { cancelled = true; };
+  }, [user, profile]);
+
   if (!car) return null;
+
+  if (approved === null) {
+    return (
+      <div className="min-h-screen pt-24 flex items-center justify-center text-muted-foreground">
+        Checking your application…
+      </div>
+    );
+  }
+
+  // No approved application = no booking. This is the whole point of the
+  // apply-first flow: documents get reviewed by a human before anyone
+  // reaches a rental.
+  if (!approved) {
+    return (
+      <div className="min-h-screen pt-24 px-4">
+        <div className="max-w-lg mx-auto bg-card border rounded-3xl p-8 text-center shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-gold-50 dark:bg-gold-900/20 flex items-center justify-center mx-auto mb-5">
+            <Shield className="w-7 h-7 text-gold-600 dark:text-gold-400" />
+          </div>
+          <h2 className="text-2xl font-extrabold mb-3">One step first</h2>
+          <p className="text-muted-foreground leading-relaxed mb-6">
+            We approve every renter before their first rental — it's how we keep the fleet
+            in good hands. Send us your driver's license, proof of insurance, and (if you
+            drive for Uber, Lyft, DoorDash or similar) a screenshot of your recent trips.
+            We'll come back to you within 24 hours.
+          </p>
+          <Button className="w-full font-bold" onClick={() => navigate('/#quote')}>
+            Apply to rent
+          </Button>
+          <p className="text-xs text-muted-foreground mt-4">
+            Already applied? We'll email you the moment you're approved. Make sure you
+            applied with the same email you signed up with.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const today = new Date().toISOString().split('T')[0];
   const totalDays = startDate && endDate ? calculateDays(startDate, endDate) : 0;

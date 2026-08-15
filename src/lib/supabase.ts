@@ -542,6 +542,39 @@ export const recordManualPayment = async (bookingId: string, amountPaid: number,
   return { data, error };
 };
 
+// Emails an applicant their approval/decline. Never blocks the decision
+// itself — if email isn't configured yet, the status still changes and the
+// caller can fall back to texting them.
+export const sendApplicationDecision = async (
+  quoteRequestId: string,
+  decision: 'approved' | 'declined',
+): Promise<{ sent: boolean }> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('send-application-email', {
+      body: { quoteRequestId, decision },
+    });
+    if (error) return { sent: false };
+    return { sent: Boolean((data as { ok?: boolean } | null)?.ok) };
+  } catch {
+    return { sent: false };
+  }
+};
+
+// Does this email address have an approved application? The booking flow
+// checks this so an account alone can't get someone to checkout — approval
+// is what unlocks renting.
+export const hasApprovedApplication = async (email: string): Promise<boolean> => {
+  if (!isSupabaseConfigured || !email) return false;
+  const { data, error } = await supabase
+    .from('quote_requests')
+    .select('id')
+    .eq('email', email)
+    .eq('status', 'approved')
+    .limit(1);
+  if (error) return false;
+  return Boolean(data && data.length > 0);
+};
+
 // The signed rental agreement tied to a booking (legal record).
 export const getAgreementForBooking = async (bookingId: string) => {
   const { data, error } = await supabase

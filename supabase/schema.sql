@@ -452,6 +452,14 @@ CREATE POLICY "Hosts can update quote requests"
   ON quote_requests FOR UPDATE
   USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_host = true));
 
+-- A signed-in applicant can look up their OWN application (matched on the
+-- email they applied with) so the booking flow can check whether they've
+-- been approved. They can't see anyone else's.
+CREATE POLICY "Applicants can view their own application"
+  ON quote_requests FOR SELECT
+  USING (email = auth.jwt() ->> 'email');
+
+
 CREATE INDEX idx_quote_requests_status ON quote_requests(status);
 
 -- Storage bucket for quote-form uploads (anonymous visitors)

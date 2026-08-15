@@ -39,3 +39,11 @@ ALTER TABLE quote_requests
 --   SELECT column_name FROM information_schema.columns
 --   WHERE table_name = 'quote_requests' ORDER BY ordinal_position;
 -- ─────────────────────────────────────────────────────────────
+
+-- 4. Let a signed-in applicant read their own application, so the booking
+--    flow can confirm they were approved. Host-only SELECT stays in place
+--    for everything else.
+DROP POLICY IF EXISTS "Applicants can view their own application" ON quote_requests;
+CREATE POLICY "Applicants can view their own application"
+  ON quote_requests FOR SELECT
+  USING (email = auth.jwt() ->> 'email');

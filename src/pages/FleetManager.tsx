@@ -15,6 +15,7 @@ import {
   createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
   getContactMessages, updateContactMessageStatus, getAgreementForBooking, recordManualPayment,
+  sendApplicationDecision,
   signIn, signOut, getProfile, hasHostSession,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
@@ -407,7 +408,30 @@ const FleetManager: React.FC = () => {
       if (error) { toast.error('Could not update — check Supabase connection'); return; }
     }
     setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status } : q));
+
+    // Approving or declining emails the applicant automatically. If email
+    // isn't set up yet the decision still stands — say so plainly so nobody
+    // assumes a message went out that didn't.
+    if (status === 'approved' || status === 'declined') {
+      const { sent } = await sendApplicationDecision(quoteId, status);
+      toast.success(
+        sent
+          ? `Marked ${status} — email sent`
+          : `Marked ${status} — email not sent yet, text them instead`,
+      );
+      return;
+    }
     toast.success(`Marked ${status}`);
+  };
+
+  // Opens the Messages app with the text already written. Keeps texts coming
+  // from Daniel's own number instead of requiring carrier registration for
+  // automated SMS.
+  const textApplicant = (q: QuoteRequest) => {
+    const msg = q.status === 'approved'
+      ? `Hi ${q.full_name.split(' ')[0]}, it's Arvana Rentals — you're approved! Create your account at ${window.location.origin}/signup with this same email and we'll get your car set up.`
+      : `Hi ${q.full_name.split(' ')[0]}, it's Arvana Rentals about your rental application —`;
+    window.open(`sms:${q.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(msg)}`);
   };
 
   const handleViewQuoteDoc = async (path: string) => {
@@ -939,7 +963,7 @@ const FleetManager: React.FC = () => {
 
                     {q.status === 'approved' && (
                       <p className="text-xs text-green-600 font-semibold mt-3">
-                        ✓ Approved — tell them to create their account at arvanarentals.com/signup
+                        ✓ Approved — they've been emailed a link to create their account
                       </p>
                     )}
 
@@ -954,6 +978,9 @@ const FleetManager: React.FC = () => {
                           </Button>
                         </>
                       )}
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => textApplicant(q)}>
+                        <MessageSquare className="w-3.5 h-3.5" /> Text them
+                      </Button>
                       {q.status === 'new' && (
                         <Button variant="outline" size="sm" onClick={() => handleQuoteStatus(q.id, 'contacted')}>
                           Mark contacted
