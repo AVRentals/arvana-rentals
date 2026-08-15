@@ -5,6 +5,32 @@ import type { Car } from '@/types';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 
+// A network call that never settles leaves a form spinning "Submitting…"
+// forever with nothing in the console — which is exactly how the quote form
+// failed in testing. Every public-facing write goes through this so the worst
+// case is a clear error the visitor can act on, not a dead button.
+export class TimeoutError extends Error {
+  constructor(seconds: number) {
+    super(`Timed out after ${seconds}s — check your connection and try again.`);
+    this.name = 'TimeoutError';
+  }
+}
+
+export const withTimeout = async <T,>(
+  promise: PromiseLike<T>,
+  ms: number,
+): Promise<T | { data: null; error: TimeoutError }> => {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<{ data: null; error: TimeoutError }>(resolve => {
+    timer = setTimeout(() => resolve({ data: null, error: new TimeoutError(ms / 1000) }), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+};
+
 export const isSupabaseConfigured = Boolean(
   import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
 );
@@ -442,9 +468,17 @@ export const revokeStaffAccount = async (profileId: string) => {
 };
 
 // ── Instant quote leads (homepage form — MMJ-style, no login required) ──
+// NOTE: no .select() here on purpose. Adding it asks Postgres to return the
+// row it just wrote, and our RLS only lets a logged-in host READ quote
+// requests — so for an ordinary (anonymous) visitor the read-back is denied
+// and the whole insert fails. Fire-and-forget is what this table needs: the
+// visitor doesn't need the row back, only the host reads these.
 export const createQuoteRequest = async (quoteData: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('quote_requests').insert(quoteData).select().single();
-  return { data, error };
+  const { error } = await withTimeout(
+    supabase.from('quote_requests').insert(quoteData),
+    20000,
+  );
+  return { data: null, error };
 };
 
 export const getQuoteRequests = async () => {
@@ -468,9 +502,14 @@ export const updateQuoteRequestStatus = async (quoteId: string, status: string) 
 // ─────────────────────────────────────────
 // CONTACT MESSAGES (the /contact page form)
 // ─────────────────────────────────────────
+// Same reasoning as createQuoteRequest — anonymous senders can INSERT but
+// must not ask for the row back.
 export const createContactMessage = async (messageData: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('contact_messages').insert(messageData).select().single();
-  return { data, error };
+  const { error } = await withTimeout(
+    supabase.from('contact_messages').insert(messageData),
+    20000,
+  );
+  return { data: null, error };
 };
 
 export const getContactMessages = async () => {
@@ -514,9 +553,12 @@ export const getAgreementForBooking = async (bookingId: string) => {
 };
 
 // Anonymous upload from the homepage quote form (quote-docs bucket).
+// Phone photos are routinely 3–8 MB, so this gets a longer leash than the
+// database writes — but still a finite one, so a stalled upload on a weak
+// connection can't freeze the form.
 export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreenshot') => {
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${kind}.${file.name.split('.').pop() || 'jpg'}`;
-  const { error } = await supabase.storage.from('quote-docs').upload(path, file);
+  const { error } = await withTimeout(supabase.storage.from('quote-docs').upload(path, file), 60000);
   if (error) return { path: null, error };
   return { path, error: null };
 };
