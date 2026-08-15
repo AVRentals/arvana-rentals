@@ -76,6 +76,21 @@ export const signOut = async () => {
   return { error };
 };
 
+// True only when there's a live Supabase session belonging to the host.
+// The Fleet Manager checks this on load: a stale "unlocked" flag in the
+// browser without a real session would show empty tabs rather than an
+// obvious "please sign in", which is exactly the confusion we hit before.
+export const hasHostSession = async (): Promise<boolean> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_host')
+    .eq('id', session.user.id)
+    .maybeSingle();
+  return Boolean(profile?.is_host);
+};
+
 export const getProfile = async (userId: string) => {
   const { data, error } = await supabase
     .from('profiles')

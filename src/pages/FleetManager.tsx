@@ -15,6 +15,7 @@ import {
   createCar, updateCar, updateOrderStage, issueRefund, createPaymentLinkCheckout, getSignedDocUrl,
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
   getContactMessages, updateContactMessageStatus, getAgreementForBooking, recordManualPayment,
+  signIn, signOut, getProfile, hasHostSession,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -119,48 +120,86 @@ const getAge = (dob: string): number => {
   return age;
 };
 
-// ── Simple password gate ────────────────────────────────────────────
-// This is a solo-operator admin panel, not a multi-user auth system —
-// a single shared password is enough for now. Set VITE_ADMIN_PASSWORD
-// in your .env / Vercel env vars to something only you know.
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'arvana2026';
+// ── Real admin login ────────────────────────────────────────────────
+// This used to be a password compared in the browser (VITE_ADMIN_PASSWORD).
+// That was broken in two ways: Vite inlines env vars into the public JS
+// bundle, so the "secret" was readable by anyone who viewed source; and
+// more importantly it never created a Supabase session, so every
+// host-scoped query came back empty — the database's row-level security
+// correctly saw an anonymous visitor. Now we sign in for real, which both
+// proves who you are and gives the queries below permission to run.
 const SESSION_KEY = 'fleet_admin_ok';
 
-const PasswordGate: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
-  const [value, setValue] = useState('');
+const AdminLogin: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
+  const [email, setEmail] = useState(ADMIN_EMAIL);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const submit = (e: React.FormEvent) => {
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (value === ADMIN_PASSWORD) {
+    setError('');
+    setBusy(true);
+
+    if (!isSupabaseConfigured) {
+      // Local development with no database — let the page open on sample data.
       sessionStorage.setItem(SESSION_KEY, '1');
       onUnlock();
-    } else {
-      setError('Wrong password');
+      return;
     }
+
+    const { data, error: signInError } = await signIn(email.trim(), password);
+    if (signInError || !data?.user) {
+      setError('Wrong email or password');
+      setBusy(false);
+      return;
+    }
+
+    // Signing in isn't enough — confirm this account is actually the host,
+    // so a renter's login can never open the Fleet Manager.
+    const { data: profile } = await getProfile(data.user.id);
+    if (!profile?.is_host) {
+      await signOut();
+      setError('That account is not the owner account');
+      setBusy(false);
+      return;
+    }
+
+    sessionStorage.setItem(SESSION_KEY, '1');
+    onUnlock();
   };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0e0e1e] px-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-white dark:bg-charcoal-900 rounded-2xl border shadow-xl p-6 space-y-4">
         <div className="flex items-center gap-2 font-extrabold text-lg">
           <Lock className="w-5 h-5 text-gold-500" /> Fleet Manager
         </div>
-        <p className="text-sm text-muted-foreground">Admin-only. Not linked from the public site.</p>
+        <p className="text-sm text-muted-foreground">Owner login. Not linked from the public site.</p>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="Email"
+          autoComplete="username"
+          className="w-full border rounded-xl px-3 py-2.5 text-sm bg-muted outline-none focus:ring-2 focus:ring-gold-400"
+        />
         <input
           type="password"
           autoFocus
-          value={value}
-          onChange={e => setValue(e.target.value)}
+          value={password}
+          onChange={e => setPassword(e.target.value)}
           placeholder="Password"
+          autoComplete="current-password"
           className="w-full border rounded-xl px-3 py-2.5 text-sm bg-muted outline-none focus:ring-2 focus:ring-gold-400"
         />
         {error && <p className="text-xs text-red-500">{error}</p>}
-        <Button type="submit" className="w-full font-bold">Unlock</Button>
-        {ADMIN_PASSWORD === 'arvana2026' && (
-          <p className="text-xs text-amber-600 flex items-start gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            You're using the default password — set VITE_ADMIN_PASSWORD in your env vars before this goes live.
-          </p>
-        )}
+        <Button type="submit" disabled={busy} className="w-full font-bold">
+          {busy ? 'Signing in…' : 'Sign in'}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Use the owner account you created in Supabase — the same login your renters' accounts are checked against.
+        </p>
       </form>
     </div>
   );
@@ -263,9 +302,24 @@ const FleetManager: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => { if (unlocked) loadData(); }, [unlocked]);
+  // Verify the Supabase session is real before trusting the unlocked flag —
+  // otherwise an expired session shows empty tabs instead of a login screen.
+  useEffect(() => {
+    if (!unlocked) return;
+    let cancelled = false;
+    (async () => {
+      if (isSupabaseConfigured && !(await hasHostSession())) {
+        if (cancelled) return;
+        sessionStorage.removeItem(SESSION_KEY);
+        setUnlocked(false);
+        return;
+      }
+      if (!cancelled) loadData();
+    })();
+    return () => { cancelled = true; };
+  }, [unlocked]);
 
-  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
+  if (!unlocked) return <AdminLogin onUnlock={() => setUnlocked(true)} />;
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading fleet data…</div>;
 
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
@@ -402,6 +456,12 @@ const FleetManager: React.FC = () => {
     }
     setBookings(prev => prev.map(x => x.id === b.id ? { ...x, amount_paid: paid, balance_due: balance } : x));
     toast.success(balance > 0 ? `Recorded — ${formatCurrency(balance)} still owed` : 'Paid in full');
+  };
+
+  const handleSignOut = async () => {
+    if (isSupabaseConfigured) await signOut();
+    sessionStorage.removeItem(SESSION_KEY);
+    setUnlocked(false);
   };
 
   const togglePaymentFilter = (status: PaymentStatus) => {
@@ -568,6 +628,12 @@ const FleetManager: React.FC = () => {
                     <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" /> Not connected to Supabase — showing local fleet data only.
                   </p>
                 )}
+                <button
+                  onClick={handleSignOut}
+                  className="text-xs text-muted-foreground hover:text-foreground underline mt-2"
+                >
+                  Sign out
+                </button>
               </div>
               <nav className="space-y-1">
                 {NAV.map(({ id, label, icon: Icon }) => (
