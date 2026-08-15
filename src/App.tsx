@@ -19,6 +19,7 @@ import Contact from '@/pages/Contact';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import NotFound from '@/pages/NotFound';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Scroll to top on route change
 const ScrollToTop: React.FC = () => {
@@ -91,6 +92,7 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <AuthProvider>
         <ThemeInitializer />
@@ -121,6 +123,7 @@ const App: React.FC = () => {
         />
       </AuthProvider>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 };
 

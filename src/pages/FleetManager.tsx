@@ -16,7 +16,7 @@ import {
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
   getContactMessages, updateContactMessageStatus, getAgreementForBooking, recordManualPayment,
   sendApplicationDecision,
-  signIn, signOut, getProfile, hasHostSession,
+  signIn, signOut, getProfile, hasHostSession, withTimeout,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -268,12 +268,14 @@ const FleetManager: React.FC = () => {
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [openMessageId, setOpenMessageId] = useState<string | null>(null);
   const [openAgreement, setOpenAgreement] = useState<Agreement | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [paymentFilters, setPaymentFilters] = useState<PaymentStatus[]>([]);
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(null);
     if (isSupabaseConfigured) {
-      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes, quotesRes, messagesRes] = await Promise.all([
+      const results = await withTimeout(Promise.all([
         getHostCars(DANIEL_HOST_ID),
         getHostBookings(DANIEL_HOST_ID),
         getMaintenanceForHost(DANIEL_HOST_ID),
@@ -284,7 +286,14 @@ const FleetManager: React.FC = () => {
         getStaffAccounts(),
         getQuoteRequests(),
         getContactMessages(),
-      ]);
+      ]), 25000) as Array<{ data: unknown }> | { data: null; error: Error };
+
+      if (!Array.isArray(results)) {
+        setLoadError('Took too long to load your fleet data. Check your connection and try again.');
+        setLoading(false);
+        return;
+      }
+      const [carsRes, bookingsRes, maintRes, couponsRes, templatesRes, notesRes, fieldsRes, staffRes, quotesRes, messagesRes] = results;
       setCars((carsRes.data as unknown as Car[]) || sampleCars);
       setBookings((bookingsRes.data as unknown as Booking[]) || sampleBookings);
       setMaintenance((maintRes.data as unknown as Maintenance[]) || sampleMaintenance);
@@ -309,19 +318,53 @@ const FleetManager: React.FC = () => {
     if (!unlocked) return;
     let cancelled = false;
     (async () => {
-      if (isSupabaseConfigured && !(await hasHostSession())) {
+      try {
+        if (isSupabaseConfigured && !(await hasHostSession())) {
+          if (cancelled) return;
+          sessionStorage.removeItem(SESSION_KEY);
+          setUnlocked(false);
+          return;
+        }
+        if (!cancelled) loadData();
+      } catch {
+        // A failed session check used to leave a blank loading screen with
+        // no way out. Fall back to the login form instead.
         if (cancelled) return;
         sessionStorage.removeItem(SESSION_KEY);
         setUnlocked(false);
-        return;
       }
-      if (!cancelled) loadData();
     })();
     return () => { cancelled = true; };
   }, [unlocked]);
 
+  const handleSignOut = async () => {
+    if (isSupabaseConfigured) await signOut();
+    sessionStorage.removeItem(SESSION_KEY);
+    setUnlocked(false);
+  };
+
   if (!unlocked) return <AdminLogin onUnlock={() => setUnlocked(true)} />;
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading fleet data…</div>;
+  if (loadError) return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="text-center max-w-sm">
+        <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-4" />
+        <p className="text-muted-foreground mb-5">{loadError}</p>
+        <div className="flex gap-2 justify-center">
+          <Button onClick={() => loadData()}>Try again</Button>
+          <Button variant="outline" onClick={handleSignOut}>Sign out</Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-muted-foreground">
+      Loading fleet data…
+      <button onClick={handleSignOut} className="text-xs underline hover:text-foreground">
+        Stuck? Sign out and back in
+      </button>
+    </div>
+  );
 
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
   const dueMaintenanceCount = maintenance.filter(m => m.next_due_date && new Date(m.next_due_date) <= new Date()).length;
@@ -434,19 +477,34 @@ const FleetManager: React.FC = () => {
     window.open(`sms:${q.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(msg)}`);
   };
 
-  const handleViewQuoteDoc = async (path: string) => {
+  // Browsers only allow window.open() while a click is still "in progress".
+  // Fetching the signed URL is an await, which ends that window, so every
+  // document after the first was silently blocked as a popup. Opening the
+  // tab immediately and filling in the URL once it arrives keeps the click's
+  // permission intact.
+  const openDocInTab = async (
+    path: string,
+    fetchUrl: (p: string) => Promise<{ url: string | null; error: unknown }>,
+  ) => {
     if (!isSupabaseConfigured) { toast.error('Connect Supabase to view uploaded documents'); return; }
-    const { url, error } = await getSignedQuoteDocUrl(path);
-    if (error || !url) { toast.error('Could not load that document'); return; }
-    window.open(url, '_blank');
+    const tab = window.open('', '_blank');
+    const { url, error } = await fetchUrl(path);
+    if (error || !url) {
+      tab?.close();
+      toast.error('Could not load that document');
+      return;
+    }
+    if (tab) {
+      tab.location.href = url;
+    } else {
+      // Popups blocked outright — use this tab rather than doing nothing,
+      // which is what made it feel broken.
+      window.location.href = url;
+    }
   };
 
-  const handleViewDoc = async (path: string) => {
-    if (!isSupabaseConfigured) { toast.error('Connect Supabase to view uploaded documents'); return; }
-    const { url, error } = await getSignedDocUrl(path);
-    if (error || !url) { toast.error('Could not load that document'); return; }
-    window.open(url, '_blank');
-  };
+  const handleViewQuoteDoc = (path: string) => openDocInTab(path, getSignedQuoteDocUrl);
+  const handleViewDoc = (path: string) => openDocInTab(path, getSignedDocUrl);
 
   // ── Contact-page inbox ──
   const handleMessageStatus = async (messageId: string, status: ContactMessageStatus) => {
@@ -480,12 +538,6 @@ const FleetManager: React.FC = () => {
     }
     setBookings(prev => prev.map(x => x.id === b.id ? { ...x, amount_paid: paid, balance_due: balance } : x));
     toast.success(balance > 0 ? `Recorded — ${formatCurrency(balance)} still owed` : 'Paid in full');
-  };
-
-  const handleSignOut = async () => {
-    if (isSupabaseConfigured) await signOut();
-    sessionStorage.removeItem(SESSION_KEY);
-    setUnlocked(false);
   };
 
   const togglePaymentFilter = (status: PaymentStatus) => {
