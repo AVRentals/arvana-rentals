@@ -596,8 +596,8 @@ export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreensho
   return { path, error: null };
 };
 
-export const getSignedQuoteDocUrl = async (path: string) => {
-  const { data, error } = await supabase.storage.from('quote-docs').createSignedUrl(path, 60 * 10);
+export const getSignedQuoteDocUrl = async (path: string, expiresInSeconds = 60 * 60) => {
+  const { data, error } = await supabase.storage.from('quote-docs').createSignedUrl(path, expiresInSeconds);
   return { url: data?.signedUrl || null, error };
 };
 
@@ -613,9 +613,35 @@ export const uploadVerificationDoc = async (renterId: string, file: File, kind: 
   return { path, error: null };
 };
 
-export const getSignedDocUrl = async (path: string) => {
-  const { data, error } = await supabase.storage.from('verification-docs').createSignedUrl(path, 60 * 10);
+export const getSignedDocUrl = async (path: string, expiresInSeconds = 60 * 60) => {
+  const { data, error } = await supabase.storage.from('verification-docs').createSignedUrl(path, expiresInSeconds);
   return { url: data?.signedUrl || null, error };
+};
+
+// Builds every document link the Fleet Manager needs in one pass, up front.
+// Doing it per-click meant an await between the click and window.open, which
+// browsers treat as an unrequested popup — and a request that occasionally
+// hung left a blank tab with no error. Pre-signing means clicking a document
+// is instant and synchronous, with nothing to fail at that moment.
+export const signDocUrls = async (
+  quotePaths: string[],
+  verificationPaths: string[],
+): Promise<Record<string, string>> => {
+  if (!isSupabaseConfigured) return {};
+  const map: Record<string, string> = {};
+  const jobs = [
+    ...quotePaths.map(p => ({ path: p, bucket: 'quote-docs' })),
+    ...verificationPaths.map(p => ({ path: p, bucket: 'verification-docs' })),
+  ];
+  await Promise.all(jobs.map(async ({ path, bucket }) => {
+    try {
+      const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
+      if (data?.signedUrl) map[path] = data.signedUrl;
+    } catch {
+      /* a document that won't sign just falls back to the per-click path */
+    }
+  }));
+  return map;
 };
 
 // ── Automated messaging trigger ──

@@ -16,7 +16,7 @@ import {
   getQuoteRequests, updateQuoteRequestStatus, getSignedQuoteDocUrl,
   getContactMessages, updateContactMessageStatus, getAgreementForBooking, recordManualPayment,
   sendApplicationDecision,
-  signIn, signOut, getProfile, hasHostSession, withTimeout,
+  signIn, signOut, getProfile, hasHostSession, withTimeout, signDocUrls,
   getCoupons, createCoupon, updateCoupon,
   getMessageTemplates, upsertMessageTemplate,
   getCustomerNotes, upsertCustomerNote,
@@ -269,6 +269,9 @@ const FleetManager: React.FC = () => {
   const [openMessageId, setOpenMessageId] = useState<string | null>(null);
   const [openAgreement, setOpenAgreement] = useState<Agreement | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // path -> signed URL, built once per load so clicking a document never has
+  // to wait on the network (see signDocUrls).
+  const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   const [paymentFilters, setPaymentFilters] = useState<PaymentStatus[]>([]);
 
   const loadData = async () => {
@@ -304,6 +307,17 @@ const FleetManager: React.FC = () => {
       setStaff((staffRes.data as unknown as Profile[]) || []);
       setQuotes((quotesRes.data as unknown as QuoteRequest[]) || []);
       setContactMessages((messagesRes.data as unknown as ContactMessage[]) || []);
+
+      // Pre-sign every document link now, while we're already loading.
+      const loadedQuotes = (quotesRes.data as unknown as QuoteRequest[]) || [];
+      const loadedBookings = (bookingsRes.data as unknown as Booking[]) || [];
+      const quotePaths = loadedQuotes.flatMap(q =>
+        [q.license_photo_path, q.gig_screenshot_path, q.insurance_doc_path].filter(Boolean) as string[]);
+      const verificationPaths = loadedBookings.flatMap(b =>
+        [b.license_photo_path, b.gig_screenshot_path, b.insurance_doc_path].filter(Boolean) as string[]);
+      if (quotePaths.length || verificationPaths.length) {
+        signDocUrls(quotePaths, verificationPaths).then(setDocUrls);
+      }
     } else {
       setCars(sampleCars);
       setBookings(sampleBookings);
@@ -487,20 +501,30 @@ const FleetManager: React.FC = () => {
     fetchUrl: (p: string) => Promise<{ url: string | null; error: unknown }>,
   ) => {
     if (!isSupabaseConfigured) { toast.error('Connect Supabase to view uploaded documents'); return; }
-    const tab = window.open('', '_blank');
-    const { url, error } = await fetchUrl(path);
-    if (error || !url) {
-      tab?.close();
-      toast.error('Could not load that document');
+
+    // Fast path: this link was signed when the page loaded, so opening it is
+    // a plain synchronous window.open — nothing to wait on, nothing to hang.
+    // Signing on click is what left the second document staring at a blank
+    // tab: the request would occasionally never come back.
+    const ready = docUrls[path];
+    if (ready) {
+      const tab = window.open(ready, '_blank');
+      if (!tab) window.location.href = ready;
       return;
     }
-    if (tab) {
-      tab.location.href = url;
-    } else {
-      // Popups blocked outright — use this tab rather than doing nothing,
-      // which is what made it feel broken.
-      window.location.href = url;
+
+    // Fallback for a document that arrived after load or failed to pre-sign.
+    const tab = window.open('', '_blank');
+    const result = await withTimeout(fetchUrl(path), 12000) as { url?: string | null };
+    const url = result?.url;
+    if (!url) {
+      tab?.close();
+      toast.error('Could not load that document — try refreshing the page');
+      return;
     }
+    setDocUrls(prev => ({ ...prev, [path]: url }));
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
   };
 
   const handleViewQuoteDoc = (path: string) => openDocInTab(path, getSignedQuoteDocUrl);
