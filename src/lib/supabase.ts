@@ -556,7 +556,7 @@ export const getAgreementForBooking = async (bookingId: string) => {
 // Phone photos are routinely 3–8 MB, so this gets a longer leash than the
 // database writes — but still a finite one, so a stalled upload on a weak
 // connection can't freeze the form.
-export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreenshot') => {
+export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreenshot' | 'insurance') => {
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${kind}.${file.name.split('.').pop() || 'jpg'}`;
   const { error } = await withTimeout(supabase.storage.from('quote-docs').upload(path, file), 60000);
   if (error) return { path: null, error };

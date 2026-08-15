@@ -151,7 +151,11 @@ export interface CustomerNote {
   created_at: string;
 }
 
-export type QuoteRequestStatus = 'new' | 'contacted' | 'closed';
+export type QuoteRequestStatus = 'new' | 'contacted' | 'approved' | 'declined' | 'closed';
+
+// How the applicant will be insured. There is deliberately no 'none' —
+// an uninsured renter who declines our coverage is not eligible to rent.
+export type InsuranceChoice = 'own' | 'arvana';
 
 export interface QuoteRequest {
   id: string;
@@ -164,6 +168,9 @@ export interface QuoteRequest {
   is_gig_worker?: boolean;
   gig_screenshot_path?: string;
   license_photo_path?: string;
+  insurance_choice?: InsuranceChoice;
+  insurance_doc_path?: string;
+  car_interest?: string;
   status: QuoteRequestStatus;
   created_at: string;
 }

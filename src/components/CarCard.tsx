@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Heart, Star, Zap, MapPin, Users, Fuel } from 'lucide-react';
 import { Car } from '@/types';
 import { formatCurrency, toggleSavedCar, isCarSaved, cn } from '@/lib/utils';
@@ -26,6 +26,7 @@ const categoryStyle: Record<string, string> = {
 };
 
 const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
+  const navigate                = useNavigate();
   const [saved, setSaved]       = useState(isCarSaved(car.id));
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered]   = useState(false);
@@ -156,8 +157,17 @@ const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
               <span className="text-muted-foreground text-xs font-medium">/day</span>
             </div>
 
-            <button className="btn-gold text-xs px-4 py-2 rounded-xl group-hover:shadow-gold-sm">
-              Book now
+            {/* Goes to the application, not a checkout — nobody books before
+                we've seen their documents and approved them. */}
+            <button
+              onClick={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/?car=${encodeURIComponent(`${car.year} ${car.make} ${car.model}`)}#quote`);
+              }}
+              className="btn-gold text-xs px-4 py-2 rounded-xl group-hover:shadow-gold-sm"
+            >
+              Apply to rent
             </button>
           </div>
         </div>

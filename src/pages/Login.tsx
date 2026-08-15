@@ -79,7 +79,7 @@ const Login: React.FC = () => {
               <Car className="w-6 h-6 text-white" />
             </div>
             <span className="text-2xl font-extrabold text-charcoal-900 dark:text-white">
-              Drive<span className="text-gold-500">Share</span>
+              Arvana<span className="text-gold-500"> Rentals</span>
             </span>
           </Link>
           <h1 className="text-2xl font-extrabold text-charcoal-900 dark:text-white mt-6 mb-1">

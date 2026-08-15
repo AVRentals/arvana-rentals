@@ -77,13 +77,31 @@ const Signup: React.FC = () => {
               <Car className="w-6 h-6 text-white" />
             </div>
             <span className="text-2xl font-extrabold text-charcoal-900 dark:text-white">
-              Drive<span className="text-gold-500">Share</span>
+              Arvana<span className="text-gold-500"> Rentals</span>
             </span>
           </Link>
           <h1 className="text-2xl font-extrabold text-charcoal-900 dark:text-white mt-6 mb-1">
             Create your account
           </h1>
-          <p className="text-muted-foreground">Join 2M+ people on Arvana Rentals</p>
+          <p className="text-muted-foreground">For approved renters</p>
+        </div>
+
+        {/* Accounts don't skip screening. Anyone can make one, but renting
+            still requires an approved application with license, insurance
+            and (for gig drivers) proof of recent trips. */}
+        <div className="bg-gold-50 dark:bg-gold-900/20 border border-gold-300/60 dark:border-gold-700/40 rounded-2xl p-4 mb-5">
+          <p className="text-sm font-bold text-charcoal-900 dark:text-white mb-1">
+            Haven't applied yet?
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            We approve every renter before their first rental. Making an account is fine, but
+            you'll still need to send your driver's license, proof of insurance, and — if you
+            drive for Uber, Lyft, DoorDash or similar — a screenshot of your recent trips.{' '}
+            <Link to="/#quote" className="text-gold-600 dark:text-gold-400 font-semibold hover:underline">
+              Apply here first
+            </Link>{' '}
+            and we'll come back to you within 24 hours.
+          </p>
         </div>
 
         <div className="bg-white dark:bg-charcoal-900 rounded-3xl shadow-xl border border-border p-8">

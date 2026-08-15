@@ -7,19 +7,26 @@ import {
 } from 'lucide-react';
 import Footer from '@/components/Footer';
 import { isSupabaseConfigured, createQuoteRequest, uploadQuoteDoc } from '@/lib/supabase';
+import type { InsuranceChoice } from '@/types';
 import toast from 'react-hot-toast';
 
 // ── Instant quote form (MMJ-style lead capture — no account needed) ──
 const QuoteForm: React.FC = () => {
+  // Set when the visitor came from a car page ("Book now"), so the application
+  // records which car they actually want.
+  const params = new URLSearchParams(window.location.search);
+  const carInterest = params.get('car') || '';
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [pickupDate, setPickupDate] = useState('');
+  const [pickupDate, setPickupDate] = useState(params.get('start') || '');
   const [pickupTime, setPickupTime] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  const [returnDate, setReturnDate] = useState(params.get('end') || '');
   const [isGigWorker, setIsGigWorker] = useState<boolean | null>(null);
   const [gigScreenshot, setGigScreenshot] = useState<File | null>(null);
   const [licensePhoto, setLicensePhoto] = useState<File | null>(null);
+  const [insuranceChoice, setInsuranceChoice] = useState<InsuranceChoice | 'none' | null>(null);
+  const [insuranceDoc, setInsuranceDoc] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showGigHelp, setShowGigHelp] = useState(false);
@@ -32,9 +39,19 @@ const QuoteForm: React.FC = () => {
     if (!pickupDate) { toast.error('Please select a pick-up date'); return; }
     if (!returnDate) { toast.error('Please select a return date'); return; }
     if (isGigWorker === null) { toast.error('Please tell us if you are an active gig worker'); return; }
-    if (isGigWorker) {
-      if (!gigScreenshot) { toast.error('Please upload a screenshot of your recent gig trips (last 30 days)'); return; }
-      if (!licensePhoto) { toast.error("Please upload a photo of your driver's license"); return; }
+    if (!licensePhoto) { toast.error("Please upload a photo of your driver's license"); return; }
+    if (isGigWorker && !gigScreenshot) {
+      toast.error('Please upload a screenshot of your recent gig trips (last 30 days)'); return;
+    }
+    if (insuranceChoice === null) { toast.error('Please tell us how you\'ll be insured'); return; }
+    // Uninsured and not taking our coverage = not eligible. Say it plainly
+    // here rather than letting them submit and get rejected days later.
+    if (insuranceChoice === 'none') {
+      toast.error('Every rental has to be insured. Choose your own policy or add our coverage to continue.');
+      return;
+    }
+    if (insuranceChoice === 'own' && !insuranceDoc) {
+      toast.error('Please upload proof of your insurance'); return;
     }
 
     setSubmitting(true);
@@ -63,6 +80,12 @@ const QuoteForm: React.FC = () => {
         if (error) console.error('[quote] license upload failed:', error);
         licPath = path;
       }
+      let insPath: string | null = null;
+      if (insuranceDoc) {
+        const { path, error } = await uploadQuoteDoc(insuranceDoc, 'insurance');
+        if (error) console.error('[quote] insurance upload failed:', error);
+        insPath = path;
+      }
 
       // The lead itself is not best-effort. If this fails, say so — never
       // show "Request received!" for a request that was thrown away.
@@ -76,6 +99,9 @@ const QuoteForm: React.FC = () => {
         is_gig_worker: isGigWorker,
         gig_screenshot_path: gigPath,
         license_photo_path: licPath,
+        insurance_choice: insuranceChoice,
+        insurance_doc_path: insPath,
+        car_interest: carInterest || null,
       });
 
       if (error) {
@@ -108,13 +134,18 @@ const QuoteForm: React.FC = () => {
 
   const inputClass = 'w-full bg-white/15 hover:bg-white/20 border border-white/10 focus:border-gold-400/60 rounded-xl px-3.5 py-2.5 text-sm outline-none placeholder:text-white/35 font-medium text-white transition-all [color-scheme:dark]';
   const labelClass = 'text-white/60 text-xs font-semibold uppercase tracking-wider px-1 mb-1 block text-left';
+  const fileClass = 'w-full text-xs text-white/70 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-gold-500 file:text-charcoal-900 file:text-xs file:font-bold';
 
   return (
     <form onSubmit={handleSubmit} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5 sm:p-6 shadow-2xl text-left">
       <h3 className="text-white font-extrabold text-lg mb-1 text-center">
-        Get a <span className="text-gold-gradient">free instant quote</span>
+        Apply to <span className="text-gold-gradient">rent</span>
       </h3>
-      <p className="text-white/50 text-xs text-center mb-5">Book your rental car now — no account needed</p>
+      <p className="text-white/50 text-xs text-center mb-1">No account needed — we'll set one up once you're approved</p>
+      {carInterest && (
+        <p className="text-gold-300 text-xs text-center mb-4 font-semibold">Applying for: {carInterest}</p>
+      )}
+      {!carInterest && <div className="mb-4" />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
@@ -190,27 +221,69 @@ const QuoteForm: React.FC = () => {
         </div>
       </div>
 
+      {/* Gig proof — only asked of gig workers */}
       {isGigWorker === true && (
-        <div className="space-y-3 mb-3">
-          <div>
-            <label className={labelClass}>Screenshot of your active gig account (trips within the last 30 days) *</label>
-            <input type="file" accept="image/*" className="w-full text-xs text-white/70 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-gold-500 file:text-charcoal-900 file:text-xs file:font-bold"
-              onChange={e => setGigScreenshot(e.target.files?.[0] || null)} />
-          </div>
-          <div>
-            <label className={labelClass}>Photo of your active driver's license *</label>
-            <input type="file" accept="image/*" className="w-full text-xs text-white/70 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-gold-500 file:text-charcoal-900 file:text-xs file:font-bold"
-              onChange={e => setLicensePhoto(e.target.files?.[0] || null)} />
-          </div>
+        <div className="mb-3">
+          <label className={labelClass}>Screenshot of your active gig account (trips within the last 30 days) *</label>
+          <input type="file" accept="image/*" className={fileClass}
+            onChange={e => setGigScreenshot(e.target.files?.[0] || null)} />
         </div>
       )}
 
+      {/* Driver's license — required from everyone, gig or not */}
+      <div className="mb-3">
+        <label className={labelClass}>Photo of your active driver's license *</label>
+        <input type="file" accept="image/*" className={fileClass}
+          onChange={e => setLicensePhoto(e.target.files?.[0] || null)} />
+      </div>
+
+      {/* Insurance — every rental must be covered one way or the other */}
+      <div className="mb-4">
+        <label className={labelClass}>How will you be insured? *</label>
+        <div className="space-y-2">
+          <button type="button" onClick={() => setInsuranceChoice('own')}
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${insuranceChoice === 'own' ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-white/20 text-white/70 hover:border-gold-400/50'}`}>
+            I have my own auto insurance
+          </button>
+          <button type="button" onClick={() => { setInsuranceChoice('arvana'); setInsuranceDoc(null); }}
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${insuranceChoice === 'arvana' ? 'bg-gold-500 border-gold-500 text-charcoal-900' : 'border-white/20 text-white/70 hover:border-gold-400/50'}`}>
+            I need coverage — add Arvana's
+          </button>
+          <button type="button" onClick={() => { setInsuranceChoice('none'); setInsuranceDoc(null); }}
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${insuranceChoice === 'none' ? 'bg-red-500/20 border-red-400/60 text-white' : 'border-white/20 text-white/70 hover:border-gold-400/50'}`}>
+            Neither
+          </button>
+        </div>
+
+        {insuranceChoice === 'own' && (
+          <div className="mt-3">
+            <label className={labelClass}>Proof of insurance — card or declaration page *</label>
+            <input type="file" accept="image/*,.pdf" className={fileClass}
+              onChange={e => setInsuranceDoc(e.target.files?.[0] || null)} />
+          </div>
+        )}
+
+        {insuranceChoice === 'arvana' && (
+          <p className="text-gold-300/90 text-[11px] leading-relaxed mt-2.5 px-1">
+            We'll quote you a coverage rate along with your rental price — nothing to upload.
+          </p>
+        )}
+
+        {insuranceChoice === 'none' && (
+          <p className="text-red-300 text-[11px] leading-relaxed mt-2.5 px-1">
+            Every car we rent has to be insured, so we can't move forward without coverage.
+            Pick your own policy or add ours to continue.
+          </p>
+        )}
+      </div>
+
       <button type="submit" disabled={submitting}
         className="btn-gold w-full rounded-xl px-5 py-3 font-bold text-sm mt-2 disabled:opacity-60">
-        {submitting ? 'Submitting…' : 'Book your car now'}
+        {submitting ? 'Submitting…' : 'Apply to rent'}
       </button>
       <p className="text-white/40 text-[11px] text-center mt-3">
-        No payment taken now — we'll confirm availability and follow up within 24 hours.
+        No payment taken now. We review every application — once you're approved we'll
+        set up your account and confirm your car.
       </p>
     </form>
   );

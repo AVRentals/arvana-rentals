@@ -879,7 +879,7 @@ const FleetManager: React.FC = () => {
             {activeNav === 'quotes' && (
               <div className="space-y-4 animate-fade-in">
                 <h1 className="text-2xl font-extrabold">Quote Leads</h1>
-                <p className="text-sm text-muted-foreground -mt-2">Instant-quote requests from the homepage form — reach out, then mark them contacted or closed.</p>
+                <p className="text-sm text-muted-foreground -mt-2">Rental applications. Check their license, insurance and gig proof, then approve — approved applicants create their account afterwards.</p>
                 {quotes.length === 0 ? (
                   <div className="text-center py-16 bg-white dark:bg-[#1A1A2E] rounded-2xl border text-muted-foreground">
                     No quote requests yet. They'll appear here as soon as someone fills out the homepage form.
@@ -897,16 +897,36 @@ const FleetManager: React.FC = () => {
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <Badge variant={q.status === 'new' ? 'warning' : q.status === 'contacted' ? 'electric' : 'secondary'}>{q.status}</Badge>
+                        <Badge variant={q.status === 'new' ? 'warning' : q.status === 'approved' ? 'success' : q.status === 'declined' ? 'destructive' : q.status === 'contacted' ? 'electric' : 'secondary'}>{q.status}</Badge>
                         {q.is_gig_worker && <span className="text-xs text-blue-600 font-semibold">Gig worker</span>}
                       </div>
                     </div>
 
-                    {(q.license_photo_path || q.gig_screenshot_path) && (
+                    {q.car_interest && (
+                      <p className="text-sm mt-2">Interested in: <strong>{q.car_interest}</strong></p>
+                    )}
+
+                    <p className="text-sm mt-1">
+                      Insurance:{' '}
+                      {q.insurance_choice === 'own' ? (
+                        <strong>Own policy</strong>
+                      ) : q.insurance_choice === 'arvana' ? (
+                        <strong className="text-green-600">Wants our coverage — quote them a rate</strong>
+                      ) : (
+                        <span className="text-muted-foreground">not answered</span>
+                      )}
+                    </p>
+
+                    {(q.license_photo_path || q.gig_screenshot_path || q.insurance_doc_path) && (
                       <div className="flex gap-2 mt-3 flex-wrap">
                         {q.license_photo_path && (
                           <Button variant="outline" size="sm" onClick={() => handleViewQuoteDoc(q.license_photo_path!)}>
                             View license photo
+                          </Button>
+                        )}
+                        {q.insurance_doc_path && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewQuoteDoc(q.insurance_doc_path!)}>
+                            View insurance proof
                           </Button>
                         )}
                         {q.gig_screenshot_path && (
@@ -917,15 +937,31 @@ const FleetManager: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="flex gap-2 mt-4 pt-4 border-t">
+                    {q.status === 'approved' && (
+                      <p className="text-xs text-green-600 font-semibold mt-3">
+                        ✓ Approved — tell them to create their account at arvanarentals.com/signup
+                      </p>
+                    )}
+
+                    <div className="flex gap-2 mt-4 pt-4 border-t flex-wrap">
+                      {q.status !== 'approved' && q.status !== 'declined' && (
+                        <>
+                          <Button variant="red" size="sm" className="flex-1 gap-1.5" onClick={() => handleQuoteStatus(q.id, 'approved')}>
+                            <Check className="w-3.5 h-3.5" /> Approve
+                          </Button>
+                          <Button variant="outline" size="sm" className="flex-1 gap-1.5 text-[#E94560] border-[#E94560]" onClick={() => handleQuoteStatus(q.id, 'declined')}>
+                            <X className="w-3.5 h-3.5" /> Decline
+                          </Button>
+                        </>
+                      )}
                       {q.status === 'new' && (
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => handleQuoteStatus(q.id, 'contacted')}>
+                        <Button variant="outline" size="sm" onClick={() => handleQuoteStatus(q.id, 'contacted')}>
                           Mark contacted
                         </Button>
                       )}
                       {q.status !== 'closed' && (
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => handleQuoteStatus(q.id, 'closed')}>
-                          Close lead
+                        <Button variant="outline" size="sm" onClick={() => handleQuoteStatus(q.id, 'closed')}>
+                          Close
                         </Button>
                       )}
                     </div>

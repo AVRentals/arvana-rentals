@@ -423,7 +423,16 @@ CREATE TABLE quote_requests (
   is_gig_worker       BOOLEAN,
   gig_screenshot_path TEXT,
   license_photo_path  TEXT,
-  status              TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','closed')),
+  -- Every applicant must be insured before they can rent: either they bring
+  -- their own policy (and upload proof) or they take Arvana's coverage.
+  -- 'none' is not an accepted answer — the form refuses to submit it.
+  insurance_choice    TEXT CHECK (insurance_choice IN ('own','arvana')),
+  insurance_doc_path  TEXT,
+  -- Which car they were looking at when they applied, if they came from a
+  -- car page rather than the homepage.
+  car_interest        TEXT,
+  status              TEXT NOT NULL DEFAULT 'new'
+                        CHECK (status IN ('new','contacted','approved','declined','closed')),
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 

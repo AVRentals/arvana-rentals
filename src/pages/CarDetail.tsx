@@ -72,9 +72,12 @@ const CarDetail: React.FC = () => {
     ? calculateBookingTotal(car.daily_rate, totalDays)
     : { subtotal: 0, serviceFee: 0, total: 0 };
 
+  // Every renter is screened before they can book, so "Reserve" sends them to
+  // the application with this car and their dates attached — not to checkout.
   const handleReserve = () => {
     if (!startDate || !endDate) { toast.error('Please select your trip dates'); return; }
-    navigate(`/book/${car?.id}?start=${startDate}&end=${endDate}`);
+    const label = `${car?.year} ${car?.make} ${car?.model}`;
+    navigate(`/?car=${encodeURIComponent(label)}&start=${startDate}&end=${endDate}#quote`);
   };
 
   const handleSave = () => {
@@ -164,7 +167,7 @@ const CarDetail: React.FC = () => {
         )}
 
         <Button variant="default" size="lg" className="w-full font-bold text-base" onClick={handleReserve}>
-          {totalDays > 0 ? `Reserve — ${formatCurrency(total)}` : 'Reserve'}
+          {totalDays > 0 ? `Apply to rent — ${formatCurrency(total)}` : 'Apply to rent'}
         </Button>
 
         <Button variant="outline" size="lg" className="w-full gap-2" onClick={() => navigate('/contact')}>
@@ -498,7 +501,7 @@ const CarDetail: React.FC = () => {
               </div>
             </div>
             <Button variant="default" size="lg" className="flex-1" onClick={() => setShowMobileBooking(true)}>
-              <Calendar className="w-4 h-4 mr-2" /> Reserve
+              <Calendar className="w-4 h-4 mr-2" /> Apply
             </Button>
           </div>
         )}
