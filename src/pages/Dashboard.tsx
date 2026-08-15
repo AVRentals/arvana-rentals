@@ -14,6 +14,8 @@ import { useAuth } from '@/context/AuthContext';
 import { sampleBookings, sampleCars } from '@/data/sampleData';
 import { getSavedCars } from '@/lib/utils';
 import { formatCurrency, formatDate, formatDateShort, getInitials } from '@/lib/utils';
+import { getMyApplication, isSupabaseConfigured } from '@/lib/supabase';
+import type { QuoteRequest } from '@/types';
 import CarCard from '@/components/CarCard';
 import toast from 'react-hot-toast';
 
@@ -26,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const Dashboard: React.FC = () => {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'trips';
@@ -36,9 +38,32 @@ const Dashboard: React.FC = () => {
   const [phone, setPhone] = useState(profile?.phone || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [saving, setSaving] = useState(false);
+  // Their rental application — the details they actually gave us. Readable
+  // by them thanks to the "Applicants can view their own application" policy.
+  const [application, setApplication] = useState<QuoteRequest | null>(null);
+  const [appLoading, setAppLoading] = useState(true);
 
   const savedCarIds = getSavedCars();
   const savedCars = sampleCars.filter(c => savedCarIds.includes(c.id));
+
+  // The dashboard is a signed-in page. Without this it rendered an empty
+  // shell to anonymous visitors — "Welcome back!" with no name and a
+  // header still offering Log in.
+  useEffect(() => {
+    if (!loading && !user) navigate('/login');
+  }, [loading, user, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const email = user?.email || profile?.email;
+    if (!email || !isSupabaseConfigured) { setAppLoading(false); return; }
+    getMyApplication(email).then(app => {
+      if (cancelled) return;
+      setApplication(app);
+      setAppLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user, profile]);
 
   useEffect(() => {
     if (profile) {
@@ -74,7 +99,9 @@ const Dashboard: React.FC = () => {
             </button>
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold">{profile?.full_name || 'Welcome back!'}</h1>
+            <h1 className="text-2xl font-extrabold">
+              Welcome back{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
+            </h1>
             <p className="text-muted-foreground text-sm">{user?.email}</p>
             {profile?.driver_license_verified && (
               <div className="flex items-center gap-1 text-green-600 text-xs font-semibold mt-1">
@@ -237,6 +264,71 @@ const Dashboard: React.FC = () => {
           {/* PROFILE */}
           <TabsContent value="profile">
             <div className="space-y-6">
+
+              {/* What they told us on their application. Shown back to them so
+                  they can check it's right and know exactly what we hold. */}
+              {!appLoading && application && (
+                <div className="bg-white dark:bg-charcoal-900 rounded-2xl border shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+                    <h2 className="text-lg font-extrabold">Your rental application</h2>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                      application.status === 'approved'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : application.status === 'declined'
+                          ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>
+                      {application.status === 'approved' ? 'Approved'
+                        : application.status === 'declined' ? 'Not approved'
+                        : 'Under review'}
+                    </span>
+                  </div>
+
+                  <dl className="space-y-3 text-sm">
+                    {[
+                      ['Name', application.full_name],
+                      ['Phone', application.phone],
+                      ['Email', application.email],
+                      ['Car requested', application.car_interest],
+                      ['Pick-up', application.pickup_date ? formatDate(application.pickup_date) : null],
+                      ['Return', application.return_date ? formatDate(application.return_date) : null],
+                      ['Gig driver', application.is_gig_worker ? 'Yes' : 'No'],
+                      ['Insurance', application.insurance_choice === 'own'
+                        ? 'Your own policy'
+                        : application.insurance_choice === 'arvana'
+                          ? "Arvana's coverage"
+                          : null],
+                      ['Applied', formatDate(application.created_at)],
+                    ].filter(([, v]) => v).map(([label, value]) => (
+                      <div key={label as string} className="flex justify-between gap-4 border-b last:border-0 pb-3 last:pb-0">
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className="font-semibold text-right">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className="mt-5 pt-5 border-t">
+                    <p className="font-semibold text-sm mb-3">Documents on file</p>
+                    <div className="space-y-2">
+                      {[
+                        ["Driver's license", application.license_photo_path],
+                        ['Proof of insurance', application.insurance_doc_path],
+                        ['Gig trip screenshot', application.gig_screenshot_path],
+                      ].filter(([, path]) => path).map(([label]) => (
+                        <div key={label as string} className="flex items-center gap-2 text-sm">
+                          <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
+                      Something out of date? Text or email us and we'll update it —
+                      documents are kept private and only used to verify your rental.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Profile edit card */}
               <div className="bg-white dark:bg-charcoal-900 rounded-2xl border shadow-sm p-6">
                 <div className="flex items-center justify-between mb-6">

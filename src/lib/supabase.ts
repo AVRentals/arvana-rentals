@@ -560,6 +560,20 @@ export const sendApplicationDecision = async (
   }
 };
 
+// The renter's own application, so their profile page can show them exactly
+// what we hold on them. Returns the most recent one if they applied twice.
+export const getMyApplication = async (email: string) => {
+  if (!isSupabaseConfigured || !email) return null;
+  const { data, error } = await supabase
+    .from('quote_requests')
+    .select('*')
+    .eq('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error || !data?.length) return null;
+  return data[0] as unknown as import('@/types').QuoteRequest;
+};
+
 // Does this email address have an approved application? The booking flow
 // checks this so an account alone can't get someone to checkout — approval
 // is what unlocks renting.
