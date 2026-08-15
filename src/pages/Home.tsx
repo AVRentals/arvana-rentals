@@ -50,30 +50,45 @@ const QuoteForm: React.FC = () => {
     try {
       let gigPath: string | null = null;
       let licPath: string | null = null;
-      if (isSupabaseConfigured) {
-        if (gigScreenshot) {
-          const { path } = await uploadQuoteDoc(gigScreenshot, 'gigscreenshot');
-          gigPath = path;
-        }
-        if (licensePhoto) {
-          const { path } = await uploadQuoteDoc(licensePhoto, 'license');
-          licPath = path;
-        }
-        await createQuoteRequest({
-          full_name: fullName.trim(),
-          phone: phone.trim(),
-          email: email.trim(),
-          pickup_date: pickupDate,
-          pickup_time: pickupTime || null,
-          return_date: returnDate,
-          is_gig_worker: isGigWorker,
-          gig_screenshot_path: gigPath,
-          license_photo_path: licPath,
-        });
+
+      // Uploads are best-effort: if a photo fails we still want the lead,
+      // but we log the reason so a broken bucket doesn't stay invisible.
+      if (gigScreenshot) {
+        const { path, error } = await uploadQuoteDoc(gigScreenshot, 'gigscreenshot');
+        if (error) console.error('[quote] gig screenshot upload failed:', error);
+        gigPath = path;
       }
+      if (licensePhoto) {
+        const { path, error } = await uploadQuoteDoc(licensePhoto, 'license');
+        if (error) console.error('[quote] license upload failed:', error);
+        licPath = path;
+      }
+
+      // The lead itself is not best-effort. If this fails, say so — never
+      // show "Request received!" for a request that was thrown away.
+      const { error } = await createQuoteRequest({
+        full_name: fullName.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        pickup_date: pickupDate,
+        pickup_time: pickupTime || null,
+        return_date: returnDate,
+        is_gig_worker: isGigWorker,
+        gig_screenshot_path: gigPath,
+        license_photo_path: licPath,
+      });
+
+      if (error) {
+        console.error('[quote] could not save quote request:', error);
+        toast.error(`Couldn't send that: ${error.message}. Please call or email us.`);
+        setSubmitting(false);
+        return;
+      }
+
       setSubmitted(true);
       toast.success('Request received! We will reach out shortly.');
-    } catch {
+    } catch (err) {
+      console.error('[quote] unexpected failure:', err);
       toast.error('Something went wrong — please try again or call us.');
     }
     setSubmitting(false);

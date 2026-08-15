@@ -35,7 +35,8 @@ const Contact: React.FC = () => {
     });
 
     if (error) {
-      toast.error('Something went wrong sending that. Please email info@arvanarentals.com instead.');
+      console.error('[contact] could not save message:', error);
+      toast.error(`Couldn't send that: ${error.message}. Please email info@arvanarentals.com instead.`);
     } else {
       toast.success('Message sent! We\'ll get back to you within 24 hours.');
       setForm({ name: '', email: '', subject: '', message: '' });
