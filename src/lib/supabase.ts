@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, processLock } from '@supabase/supabase-js';
 import { sampleCars, sampleHosts } from '@/data/sampleData';
 import type { Car } from '@/types';
 
@@ -35,7 +35,30 @@ export const isSupabaseConfigured = Boolean(
   import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // THE FIX for "I click one thing, then nothing works until I refresh".
+    //
+    // By default the client guards token refresh with the browser's Web Locks
+    // API. Opening a document in a new tab pushes this page to the background,
+    // and a background tab can end up holding that lock indefinitely — after
+    // which every query that needs auth waits forever. Buttons stop
+    // responding, no error appears, and only a reload clears it.
+    //
+    // processLock is an in-memory queue instead: same protection against
+    // overlapping refreshes, but it can't outlive the page or get stuck
+    // behind another tab.
+    lock: processLock,
+  },
+});
+
+// Wraps an admin action so a stalled request surfaces as an error instead of
+// a button that silently does nothing.
+const guard = <T,>(p: PromiseLike<T>): Promise<T> =>
+  withTimeout(p, 15000) as Promise<T>;
 
 // The single host UUID, once you've created your real Supabase auth user
 // and pasted the ID here. Used to gate the /admin route and as a fallback
@@ -107,13 +130,15 @@ export const signOut = async () => {
 // browser without a real session would show empty tabs rather than an
 // obvious "please sign in", which is exactly the confusion we hit before.
 export const hasHostSession = async (): Promise<boolean> => {
-  const { data: { session } } = await supabase.auth.getSession();
+  const res = await withTimeout(supabase.auth.getSession(), 10000) as
+    { data?: { session?: { user?: { id: string } } } };
+  const session = res?.data?.session;
   if (!session?.user) return false;
-  const { data: profile } = await supabase
+  const { data: profile } = await guard(supabase
     .from('profiles')
     .select('is_host')
     .eq('id', session.user.id)
-    .maybeSingle();
+    .maybeSingle());
   return Boolean(profile?.is_host);
 };
 
@@ -186,17 +211,17 @@ export const getHostCars = async (hostId: string) => {
 };
 
 export const createCar = async (carData: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('cars').insert(carData).select().single();
+  const { data, error } = await guard(supabase.from('cars').insert(carData).select().single());
   return { data, error };
 };
 
 export const updateCar = async (carId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('cars')
     .update(updates)
     .eq('id', carId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -234,12 +259,12 @@ export const getHostBookings = async (hostId: string) => {
 };
 
 export const updateBookingStatus = async (bookingId: string, status: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('bookings')
     .update({ status })
     .eq('id', bookingId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -318,12 +343,12 @@ export const sendMessage = async (messageData: Record<string, unknown>) => {
 
 // ── Order stage (Fleetwire-style reserved -> picked up -> returned) ──
 export const updateOrderStage = async (bookingId: string, order_stage: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('bookings')
     .update({ order_stage })
     .eq('id', bookingId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -338,12 +363,12 @@ export const getCoupons = async (hostId: string) => {
 };
 
 export const createCoupon = async (couponData: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('coupons').insert(couponData).select().single();
+  const { data, error } = await guard(supabase.from('coupons').insert(couponData).select().single());
   return { data, error };
 };
 
 export const updateCoupon = async (couponId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('coupons').update(updates).eq('id', couponId).select().single();
+  const { data, error } = await guard(supabase.from('coupons').update(updates).eq('id', couponId).select().single());
   return { data, error };
 };
 
@@ -382,11 +407,11 @@ export const getMessageTemplates = async (hostId: string) => {
 };
 
 export const upsertMessageTemplate = async (templateData: Record<string, unknown>) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('message_templates')
     .upsert(templateData, { onConflict: 'host_id,event_type,channel' })
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -400,11 +425,11 @@ export const getCustomerNotes = async (hostId: string) => {
 };
 
 export const upsertCustomerNote = async (hostId: string, renterId: string, note: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('customer_notes')
     .upsert({ host_id: hostId, renter_id: renterId, note }, { onConflict: 'host_id,renter_id' })
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -429,22 +454,22 @@ export const getAllCustomCheckoutFields = async (hostId: string) => {
 };
 
 export const createCustomCheckoutField = async (fieldData: Record<string, unknown>) => {
-  const { data, error } = await supabase.from('custom_checkout_fields').insert(fieldData).select().single();
+  const { data, error } = await guard(supabase.from('custom_checkout_fields').insert(fieldData).select().single());
   return { data, error };
 };
 
 export const updateCustomCheckoutField = async (fieldId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('custom_checkout_fields')
     .update(updates)
     .eq('id', fieldId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
 export const deleteCustomCheckoutField = async (fieldId: string) => {
-  const { error } = await supabase.from('custom_checkout_fields').delete().eq('id', fieldId);
+  const { error } = await guard(supabase.from('custom_checkout_fields').delete().eq('id', fieldId));
   return { error };
 };
 
@@ -490,12 +515,12 @@ export const getQuoteRequests = async () => {
 };
 
 export const updateQuoteRequestStatus = async (quoteId: string, status: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('quote_requests')
     .update({ status })
     .eq('id', quoteId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -521,24 +546,24 @@ export const getContactMessages = async () => {
 };
 
 export const updateContactMessageStatus = async (messageId: string, status: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('contact_messages')
     .update({ status })
     .eq('id', messageId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
 // Record money collected outside Stripe (cash, Zelle, Cash App...) so the
 // Payment Status board reflects reality, not just card payments.
 export const recordManualPayment = async (bookingId: string, amountPaid: number, balanceDue: number) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('bookings')
     .update({ amount_paid: amountPaid, balance_due: balanceDue })
     .eq('id', bookingId)
     .select()
-    .single();
+    .single());
   return { data, error };
 };
 
@@ -550,9 +575,10 @@ export const sendApplicationDecision = async (
   decision: 'approved' | 'declined',
 ): Promise<{ sent: boolean }> => {
   try {
-    const { data, error } = await supabase.functions.invoke('send-application-email', {
-      body: { quoteRequestId, decision },
-    });
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke('send-application-email', { body: { quoteRequestId, decision } }),
+      15000,
+    ) as { data?: { ok?: boolean } | null; error?: unknown };
     if (error) return { sent: false };
     return { sent: Boolean((data as { ok?: boolean } | null)?.ok) };
   } catch {
@@ -591,11 +617,11 @@ export const hasApprovedApplication = async (email: string): Promise<boolean> =>
 
 // The signed rental agreement tied to a booking (legal record).
 export const getAgreementForBooking = async (bookingId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await guard(supabase
     .from('agreements')
     .select('*')
     .eq('booking_id', bookingId)
-    .maybeSingle();
+    .maybeSingle());
   return { data, error };
 };
 
