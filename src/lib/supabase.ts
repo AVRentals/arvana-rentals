@@ -60,6 +60,134 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 const guard = <T,>(p: PromiseLike<T>): Promise<T> =>
   withTimeout(p, 15000) as Promise<T>;
 
+// ─────────────────────────────────────────────────────────────
+// DIRECT REST LAYER (admin actions)
+//
+// Buttons in the Fleet Manager kept going dead until a page refresh. The
+// cause is inside the Supabase client: its internal auth handling can stall
+// after the page has been backgrounded (which is exactly what happens when
+// you open a renter's document in a new tab), and a stalled call never
+// settles — so the click appears to do nothing at all.
+//
+// Rather than keep guessing at that machinery, admin writes bypass it. These
+// helpers talk to the same REST API with a plain fetch, an AbortController
+// (so the promise ALWAYS settles), and a token we keep in memory. Nothing
+// here can deadlock, and a failure is a real error you can see.
+// ─────────────────────────────────────────────────────────────
+
+let cachedAccessToken: string | null = null;
+
+// Keep the token fresh in memory. onAuthStateChange fires on sign-in,
+// sign-out and every token refresh, so this stays current without us ever
+// having to ask the client for the session mid-click.
+if (isSupabaseConfigured) {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    cachedAccessToken = session?.access_token ?? null;
+  });
+  supabase.auth.getSession()
+    .then(({ data }) => { cachedAccessToken = data.session?.access_token ?? null; })
+    .catch(() => { /* the REST layer falls back to the anon key */ });
+}
+
+export const restRequest = async <T = unknown>(
+  path: string,
+  init: { method: string; body?: unknown; headers?: Record<string, string> },
+): Promise<{ data: T | null; error: Error | null }> => {
+  if (!isSupabaseConfigured) return { data: null, error: new Error('Supabase not configured') };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      method: init.method,
+      signal: controller.signal,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${cachedAccessToken || supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+        ...init.headers,
+      },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      return { data: null, error: new Error(detail || `Request failed (${res.status})`) };
+    }
+    const text = await res.text();
+    return { data: text ? (JSON.parse(text) as T) : null, error: null };
+  } catch (err) {
+    const aborted = err instanceof DOMException && err.name === 'AbortError';
+    return {
+      data: null,
+      error: new Error(aborted ? 'Timed out — check your connection and try again.' : String(err)),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+// SELECT rows. `query` is PostgREST syntax, e.g. "cars?host_id=eq.123&order=created_at.desc"
+export const restSelect = async <T = unknown[]>(query: string) => {
+  const { data, error } = await restRequest<T>(query, { method: 'GET' });
+  return { data: (data ?? []) as T, error };
+};
+
+// Signs a storage object for temporary viewing, without going through the
+// client. Same reasoning as the writes: a plain fetch always settles.
+export const restSignUrl = async (bucket: string, path: string, expiresIn = 3600) => {
+  if (!isSupabaseConfigured) return { url: null, error: new Error('Supabase not configured') };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/sign/${bucket}/${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${cachedAccessToken || supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expiresIn }),
+    });
+    if (!res.ok) return { url: null, error: new Error(await res.text().catch(() => 'sign failed')) };
+    const json = await res.json() as { signedURL?: string };
+    return {
+      url: json.signedURL ? `${supabaseUrl}/storage/v1${json.signedURL}` : null,
+      error: null,
+    };
+  } catch (err) {
+    return { url: null, error: err instanceof Error ? err : new Error(String(err)) };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+// INSERT a row.
+export const restInsert = async (
+  table: string,
+  row: Record<string, unknown>,
+  prefer = 'return=representation',
+) => {
+  const { data, error } = await restRequest<unknown[]>(table, {
+    method: 'POST',
+    body: row,
+    headers: { Prefer: prefer },
+  });
+  return { data: Array.isArray(data) ? data[0] ?? null : data, error };
+};
+
+// PATCH a single row by id, the shape every admin button needs.
+export const restUpdateById = async (table: string, id: string, patch: Record<string, unknown>) => {
+  const { data, error } = await restRequest<unknown[]>(`${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: patch,
+  });
+  return { data: Array.isArray(data) ? data[0] ?? null : data, error };
+};
+
 // The single host UUID, once you've created your real Supabase auth user
 // and pasted the ID here. Used to gate the /admin route and as a fallback
 // host_id when Supabase isn't configured yet.
@@ -131,24 +259,18 @@ export const signOut = async () => {
 // obvious "please sign in", which is exactly the confusion we hit before.
 export const hasHostSession = async (): Promise<boolean> => {
   const res = await withTimeout(supabase.auth.getSession(), 10000) as
-    { data?: { session?: { user?: { id: string } } } };
+    { data?: { session?: { user?: { id: string }; access_token?: string } } };
   const session = res?.data?.session;
   if (!session?.user) return false;
-  const { data: profile } = await guard(supabase
-    .from('profiles')
-    .select('is_host')
-    .eq('id', session.user.id)
-    .maybeSingle());
-  return Boolean(profile?.is_host);
+  if (session.access_token) cachedAccessToken = session.access_token;
+  const { data } = await restSelect<unknown[]>(`profiles?id=eq.${session.user.id}&select=is_host`);
+  const row = Array.isArray(data) ? data[0] as { is_host?: boolean } | undefined : undefined;
+  return Boolean(row?.is_host);
 };
 
 export const getProfile = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
-  return { data, error };
+  const { data, error } = await restSelect<unknown[]>(`profiles?id=eq.${userId}&select=*`);
+  return { data: Array.isArray(data) ? data[0] ?? null : null, error };
 };
 
 export const updateProfile = async (userId: string, updates: Record<string, unknown>) => {
@@ -201,29 +323,14 @@ export const getCarById = async (carId: string) => {
   return { data, error };
 };
 
-export const getHostCars = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('cars')
-    .select('*')
-    .eq('host_id', hostId)
-    .order('created_at', { ascending: false });
-  return { data, error };
-};
+export const getHostCars = (hostId: string) =>
+  restSelect(`cars?host_id=eq.${hostId}&order=created_at.desc`);
 
-export const createCar = async (carData: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase.from('cars').insert(carData).select().single());
-  return { data, error };
-};
+export const createCar = (carData: Record<string, unknown>) =>
+  restInsert('cars', carData);
 
-export const updateCar = async (carId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase
-    .from('cars')
-    .update(updates)
-    .eq('id', carId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateCar = (carId: string, updates: Record<string, unknown>) =>
+  restUpdateById('cars', carId, updates);
 
 // Bookings
 export const createBooking = async (bookingData: Record<string, unknown>) => {
@@ -258,15 +365,8 @@ export const getHostBookings = async (hostId: string) => {
   return { data, error };
 };
 
-export const updateBookingStatus = async (bookingId: string, status: string) => {
-  const { data, error } = await guard(supabase
-    .from('bookings')
-    .update({ status })
-    .eq('id', bookingId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateBookingStatus = (bookingId: string, status: string) =>
+  restUpdateById('bookings', bookingId, { status });
 
 // Stripe (via Supabase Edge Functions — see supabase/functions/)
 export const createRentCheckout = async (bookingId: string) => {
@@ -296,14 +396,8 @@ export const createAgreement = async (agreementData: Record<string, unknown>) =>
 };
 
 // Maintenance
-export const getMaintenanceForHost = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('maintenance')
-    .select('*, car:cars!inner(*)')
-    .eq('car.host_id', hostId)
-    .order('next_due_date', { ascending: true });
-  return { data, error };
-};
+export const getMaintenanceForHost = (hostId: string) =>
+  restSelect(`maintenance?select=*,car:cars!inner(*)&car.host_id=eq.${hostId}&order=next_due_date.asc`);
 
 export const createMaintenance = async (maintenanceData: Record<string, unknown>) => {
   const { data, error } = await supabase.from('maintenance').insert(maintenanceData).select().single();
@@ -342,35 +436,18 @@ export const sendMessage = async (messageData: Record<string, unknown>) => {
 };
 
 // ── Order stage (Fleetwire-style reserved -> picked up -> returned) ──
-export const updateOrderStage = async (bookingId: string, order_stage: string) => {
-  const { data, error } = await guard(supabase
-    .from('bookings')
-    .update({ order_stage })
-    .eq('id', bookingId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateOrderStage = (bookingId: string, stage: string) =>
+  restUpdateById('bookings', bookingId, { order_stage: stage });
 
 // ── Coupons ──
-export const getCoupons = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('coupons')
-    .select('*')
-    .eq('host_id', hostId)
-    .order('created_at', { ascending: false });
-  return { data, error };
-};
+export const getCoupons = (hostId: string) =>
+  restSelect(`coupons?host_id=eq.${hostId}&order=created_at.desc`);
 
-export const createCoupon = async (couponData: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase.from('coupons').insert(couponData).select().single());
-  return { data, error };
-};
+export const createCoupon = (couponData: Record<string, unknown>) =>
+  restInsert('coupons', couponData);
 
-export const updateCoupon = async (couponId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase.from('coupons').update(updates).eq('id', couponId).select().single());
-  return { data, error };
-};
+export const updateCoupon = (couponId: string, updates: Record<string, unknown>) =>
+  restUpdateById('coupons', couponId, updates);
 
 // Looks up an active coupon by code for a given host — used at checkout.
 export const lookupCoupon = async (hostId: string, code: string) => {
@@ -397,41 +474,18 @@ export const createPaymentLinkCheckout = async (bookingId: string, amount: numbe
 };
 
 // ── Message templates (automated messaging) ──
-export const getMessageTemplates = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('message_templates')
-    .select('*')
-    .eq('host_id', hostId)
-    .order('event_type', { ascending: true });
-  return { data, error };
-};
+export const getMessageTemplates = (hostId: string) =>
+  restSelect(`message_templates?host_id=eq.${hostId}`);
 
-export const upsertMessageTemplate = async (templateData: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase
-    .from('message_templates')
-    .upsert(templateData, { onConflict: 'host_id,event_type,channel' })
-    .select()
-    .single());
-  return { data, error };
-};
+export const upsertMessageTemplate = (templateData: Record<string, unknown>) =>
+  restInsert('message_templates', templateData, 'resolution=merge-duplicates,return=representation');
 
 // ── Customer CRM (notes) ──
-export const getCustomerNotes = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('customer_notes')
-    .select('*')
-    .eq('host_id', hostId);
-  return { data, error };
-};
+export const getCustomerNotes = (hostId: string) =>
+  restSelect(`customer_notes?host_id=eq.${hostId}&order=created_at.desc`);
 
-export const upsertCustomerNote = async (hostId: string, renterId: string, note: string) => {
-  const { data, error } = await guard(supabase
-    .from('customer_notes')
-    .upsert({ host_id: hostId, renter_id: renterId, note }, { onConflict: 'host_id,renter_id' })
-    .select()
-    .single());
-  return { data, error };
-};
+export const upsertCustomerNote = (hostId: string, renterId: string, note: string) =>
+  restInsert('customer_notes', { host_id: hostId, renter_id: renterId, note });
 
 // ── Custom checkout fields ──
 export const getCustomCheckoutFields = async (hostId: string) => {
@@ -444,34 +498,17 @@ export const getCustomCheckoutFields = async (hostId: string) => {
   return { data, error };
 };
 
-export const getAllCustomCheckoutFields = async (hostId: string) => {
-  const { data, error } = await supabase
-    .from('custom_checkout_fields')
-    .select('*')
-    .eq('host_id', hostId)
-    .order('sort_order', { ascending: true });
-  return { data, error };
-};
+export const getAllCustomCheckoutFields = (hostId: string) =>
+  restSelect(`custom_checkout_fields?host_id=eq.${hostId}&order=sort_order.asc`);
 
-export const createCustomCheckoutField = async (fieldData: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase.from('custom_checkout_fields').insert(fieldData).select().single());
-  return { data, error };
-};
+export const createCustomCheckoutField = (fieldData: Record<string, unknown>) =>
+  restInsert('custom_checkout_fields', fieldData);
 
-export const updateCustomCheckoutField = async (fieldId: string, updates: Record<string, unknown>) => {
-  const { data, error } = await guard(supabase
-    .from('custom_checkout_fields')
-    .update(updates)
-    .eq('id', fieldId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateCustomCheckoutField = (fieldId: string, updates: Record<string, unknown>) =>
+  restUpdateById('custom_checkout_fields', fieldId, updates);
 
-export const deleteCustomCheckoutField = async (fieldId: string) => {
-  const { error } = await guard(supabase.from('custom_checkout_fields').delete().eq('id', fieldId));
-  return { error };
-};
+export const deleteCustomCheckoutField = (fieldId: string) =>
+  restRequest(`custom_checkout_fields?id=eq.${encodeURIComponent(fieldId)}`, { method: 'DELETE' });
 
 // ── Staff / role accounts ──
 // Invites a staff account. Supabase's client SDK can't create users directly
@@ -482,10 +519,8 @@ export const inviteStaffAccount = async (email: string, fullName: string) => {
   return { data, error };
 };
 
-export const getStaffAccounts = async () => {
-  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'staff');
-  return { data, error };
-};
+export const getStaffAccounts = () =>
+  restSelect('profiles?role=eq.staff&order=created_at.desc');
 
 export const revokeStaffAccount = async (profileId: string) => {
   const { data, error } = await supabase.functions.invoke('revoke-staff', { body: { profileId } });
@@ -506,23 +541,11 @@ export const createQuoteRequest = async (quoteData: Record<string, unknown>) => 
   return { data: null, error };
 };
 
-export const getQuoteRequests = async () => {
-  const { data, error } = await supabase
-    .from('quote_requests')
-    .select('*')
-    .order('created_at', { ascending: false });
-  return { data, error };
-};
+export const getQuoteRequests = () =>
+  restSelect('quote_requests?order=created_at.desc');
 
-export const updateQuoteRequestStatus = async (quoteId: string, status: string) => {
-  const { data, error } = await guard(supabase
-    .from('quote_requests')
-    .update({ status })
-    .eq('id', quoteId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateQuoteRequestStatus = (quoteId: string, status: string) =>
+  restUpdateById('quote_requests', quoteId, { status });
 
 // ─────────────────────────────────────────
 // CONTACT MESSAGES (the /contact page form)
@@ -537,35 +560,16 @@ export const createContactMessage = async (messageData: Record<string, unknown>)
   return { data: null, error };
 };
 
-export const getContactMessages = async () => {
-  const { data, error } = await supabase
-    .from('contact_messages')
-    .select('*')
-    .order('created_at', { ascending: false });
-  return { data, error };
-};
+export const getContactMessages = () =>
+  restSelect('contact_messages?order=created_at.desc');
 
-export const updateContactMessageStatus = async (messageId: string, status: string) => {
-  const { data, error } = await guard(supabase
-    .from('contact_messages')
-    .update({ status })
-    .eq('id', messageId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const updateContactMessageStatus = (messageId: string, status: string) =>
+  restUpdateById('contact_messages', messageId, { status });
 
 // Record money collected outside Stripe (cash, Zelle, Cash App...) so the
 // Payment Status board reflects reality, not just card payments.
-export const recordManualPayment = async (bookingId: string, amountPaid: number, balanceDue: number) => {
-  const { data, error } = await guard(supabase
-    .from('bookings')
-    .update({ amount_paid: amountPaid, balance_due: balanceDue })
-    .eq('id', bookingId)
-    .select()
-    .single());
-  return { data, error };
-};
+export const recordManualPayment = (bookingId: string, amountPaid: number, balanceDue: number) =>
+  restUpdateById('bookings', bookingId, { amount_paid: amountPaid, balance_due: balanceDue });
 
 // Emails an applicant their approval/decline. Never blocks the decision
 // itself — if email isn't configured yet, the status still changes and the
@@ -590,14 +594,10 @@ export const sendApplicationDecision = async (
 // what we hold on them. Returns the most recent one if they applied twice.
 export const getMyApplication = async (email: string) => {
   if (!isSupabaseConfigured || !email) return null;
-  const { data, error } = await supabase
-    .from('quote_requests')
-    .select('*')
-    .eq('email', email)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (error || !data?.length) return null;
-  return data[0] as unknown as import('@/types').QuoteRequest;
+  const { data, error } = await restSelect<unknown[]>(
+    `quote_requests?email=eq.${encodeURIComponent(email)}&order=created_at.desc&limit=1`);
+  if (error || !Array.isArray(data) || !data.length) return null;
+  return data[0] as import('@/types').QuoteRequest;
 };
 
 // Does this email address have an approved application? The booking flow
@@ -605,24 +605,16 @@ export const getMyApplication = async (email: string) => {
 // is what unlocks renting.
 export const hasApprovedApplication = async (email: string): Promise<boolean> => {
   if (!isSupabaseConfigured || !email) return false;
-  const { data, error } = await supabase
-    .from('quote_requests')
-    .select('id')
-    .eq('email', email)
-    .eq('status', 'approved')
-    .limit(1);
+  const { data, error } = await restSelect<unknown[]>(
+    `quote_requests?email=eq.${encodeURIComponent(email)}&status=eq.approved&limit=1`);
   if (error) return false;
-  return Boolean(data && data.length > 0);
+  return Array.isArray(data) && data.length > 0;
 };
 
 // The signed rental agreement tied to a booking (legal record).
 export const getAgreementForBooking = async (bookingId: string) => {
-  const { data, error } = await guard(supabase
-    .from('agreements')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .maybeSingle());
-  return { data, error };
+  const { data, error } = await restSelect<unknown[]>(`agreements?booking_id=eq.${bookingId}&limit=1`);
+  return { data: Array.isArray(data) ? data[0] ?? null : null, error };
 };
 
 // Anonymous upload from the homepage quote form (quote-docs bucket).
@@ -636,10 +628,8 @@ export const uploadQuoteDoc = async (file: File, kind: 'license' | 'gigscreensho
   return { path, error: null };
 };
 
-export const getSignedQuoteDocUrl = async (path: string, expiresInSeconds = 60 * 60) => {
-  const { data, error } = await supabase.storage.from('quote-docs').createSignedUrl(path, expiresInSeconds);
-  return { url: data?.signedUrl || null, error };
-};
+export const getSignedQuoteDocUrl = (path: string, expiresInSeconds = 60 * 60) =>
+  restSignUrl('quote-docs', path, expiresInSeconds);
 
 // ── Gig-worker verification uploads (license photo + gig trip screenshot) ──
 // Files live in the private 'verification-docs' bucket, path-scoped to the
@@ -653,10 +643,8 @@ export const uploadVerificationDoc = async (renterId: string, file: File, kind: 
   return { path, error: null };
 };
 
-export const getSignedDocUrl = async (path: string, expiresInSeconds = 60 * 60) => {
-  const { data, error } = await supabase.storage.from('verification-docs').createSignedUrl(path, expiresInSeconds);
-  return { url: data?.signedUrl || null, error };
-};
+export const getSignedDocUrl = (path: string, expiresInSeconds = 60 * 60) =>
+  restSignUrl('verification-docs', path, expiresInSeconds);
 
 // Builds every document link the Fleet Manager needs in one pass, up front.
 // Doing it per-click meant an await between the click and window.open, which
@@ -674,12 +662,8 @@ export const signDocUrls = async (
     ...verificationPaths.map(p => ({ path: p, bucket: 'verification-docs' })),
   ];
   await Promise.all(jobs.map(async ({ path, bucket }) => {
-    try {
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
-      if (data?.signedUrl) map[path] = data.signedUrl;
-    } catch {
-      /* a document that won't sign just falls back to the per-click path */
-    }
+    const { url } = await restSignUrl(bucket, path);
+    if (url) map[path] = url;
   }));
   return map;
 };

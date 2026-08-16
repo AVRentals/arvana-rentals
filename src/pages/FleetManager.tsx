@@ -159,7 +159,7 @@ const AdminLogin: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
     // Signing in isn't enough — confirm this account is actually the host,
     // so a renter's login can never open the Fleet Manager.
     const { data: profile } = await getProfile(data.user.id);
-    if (!profile?.is_host) {
+    if (!(profile as { is_host?: boolean } | null)?.is_host) {
       await signOut();
       setError('That account is not the owner account');
       setBusy(false);
