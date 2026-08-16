@@ -52,9 +52,13 @@ const Layout: React.FC<{ children: React.ReactNode; hideNav?: boolean }> = ({ ch
 const AppRoutes: React.FC = () => {
   const location = useLocation();
   const isAuthPage = ['/login', '/signup'].includes(location.pathname);
+  // The Fleet Manager is a back-office tool, not part of the customer site.
+  // It carries its own header — showing the public navbar there put "My Trips"
+  // and "Saved Cars" in front of the owner, which made no sense.
+  const isAdminPage = location.pathname.startsWith('/admin');
 
   return (
-    <Layout hideNav={isAuthPage}>
+    <Layout hideNav={isAuthPage || isAdminPage}>
       <Routes>
         {/* Public */}
         <Route path="/" element={<Home />} />

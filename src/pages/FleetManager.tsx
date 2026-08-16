@@ -715,27 +715,50 @@ const FleetManager: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#0e0e1e] pt-16">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0e0e1e]">
+      {/* Back-office header. Deliberately not the public Navbar — no city
+          search, no My Trips / Saved Cars. This is the owner's tool. */}
+      <header className="bg-[#1A1A2E] text-white border-b border-white/10 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-gold-gradient font-extrabold text-lg tracking-tight"
+              style={{ fontFamily: '"Barlow Condensed", system-ui, sans-serif' }}>AR</span>
+            <span className="font-bold text-sm tracking-wide">Fleet Manager</span>
+            <span className="hidden sm:inline text-[10px] uppercase tracking-widest bg-white/10 rounded-full px-2 py-0.5 text-white/70">
+              Staff only
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm">
+            <a
+              href="/"
+              target="_blank"
+              rel="noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-white/60 hover:text-white transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> View site
+            </a>
+            <span className="hidden md:block text-white/50 truncate max-w-[200px]">{ADMIN_EMAIL}</span>
+            <button
+              onClick={handleSignOut}
+              className="text-white/70 hover:text-white font-semibold transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </header>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}
           <aside className="w-full lg:w-64 flex-shrink-0">
-            <div className="bg-white dark:bg-[#1A1A2E] rounded-2xl border shadow-sm p-4 lg:sticky lg:top-24">
-              <div className="p-3 mb-4 bg-muted rounded-xl">
-                <p className="font-bold text-sm">Arvana Rentals</p>
-                <p className="text-xs text-muted-foreground">{ADMIN_EMAIL}</p>
-                {!isSupabaseConfigured && (
-                  <p className="text-xs text-amber-600 mt-2 flex items-start gap-1">
-                    <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" /> Not connected to Supabase — showing local fleet data only.
-                  </p>
-                )}
-                <button
-                  onClick={handleSignOut}
-                  className="text-xs text-muted-foreground hover:text-foreground underline mt-2"
-                >
-                  Sign out
-                </button>
-              </div>
+            <div className="bg-white dark:bg-[#1A1A2E] rounded-2xl border shadow-sm p-4 lg:sticky lg:top-20">
+              {!isSupabaseConfigured && (
+                <p className="text-xs text-amber-600 mb-4 flex items-start gap-1 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                  <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" /> Not connected to Supabase — showing local fleet data only.
+                </p>
+              )}
               <nav className="space-y-1">
                 {NAV.map(({ id, label, icon: Icon }) => (
                   <button
