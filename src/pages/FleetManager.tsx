@@ -58,7 +58,7 @@ const EVENT_LABELS: Record<MessageEventType, string> = {
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'cars', label: 'My Cars', icon: CarIcon },
+  { id: 'cars', label: 'Fleet', icon: CarIcon },
   { id: 'requests', label: 'Booking Requests', icon: Calendar },
   { id: 'quotes', label: 'Quote Leads', icon: Send },
   { id: 'inbox', label: 'Inbox', icon: Inbox },
@@ -797,7 +797,7 @@ const FleetManager: React.FC = () => {
                 <h1 className="text-2xl font-extrabold">Fleet overview</h1>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
-                    { label: 'Cars in fleet', value: cars.length, icon: <CarIcon className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                    { label: 'Fleet size', value: cars.length, icon: <CarIcon className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
                     { label: 'Pending requests', value: pendingCount, icon: <Calendar className="w-5 h-5" />, color: 'text-[#E94560]', bg: 'bg-red-50 dark:bg-red-900/20' },
                     { label: 'Maintenance due', value: dueMaintenanceCount, icon: <Wrench className="w-5 h-5" />, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
                     { label: 'Confirmed trips', value: bookings.filter(b => ['confirmed','active','completed'].includes(b.status)).length, icon: <DollarSign className="w-5 h-5" />, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20' },
@@ -821,9 +821,9 @@ const FleetManager: React.FC = () => {
             {activeNav === 'cars' && (
               <div className="space-y-4 animate-fade-in">
                 <div className="flex items-center justify-between">
-                  <h1 className="text-2xl font-extrabold">My Cars</h1>
+                  <h1 className="text-2xl font-extrabold">Fleet</h1>
                   <Button size="sm" className="gap-1.5 font-bold" onClick={openAddCar}>
-                    <Plus className="w-4 h-4" /> Add new car
+                    <Plus className="w-4 h-4" /> Add to fleet
                   </Button>
                 </div>
                 {cars.map(car => (
