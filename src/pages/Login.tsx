@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, Car, Mail, Lock, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -74,11 +74,15 @@ const Login: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 bg-gold-500 rounded-xl flex items-center justify-center">
-              <Car className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-2xl font-extrabold text-charcoal-900 dark:text-white">
+          {/* Same AR wordmark as the site header — the car icon here made the
+              auth pages look like a different brand. */}
+          <Link to="/" className="inline-flex items-center gap-2.5">
+            <span className="text-gold-gradient"
+              style={{ fontFamily: '"Barlow Condensed", system-ui, sans-serif', fontWeight: 800, fontSize: '2rem', letterSpacing: '-0.04em', lineHeight: 1 }}>
+              AR
+            </span>
+            <span className="font-extrabold tracking-tight text-charcoal-900 dark:text-white"
+              style={{ fontFamily: '"Barlow Condensed", system-ui, sans-serif', fontSize: '1.35rem', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               Arvana<span className="text-gold-500"> Rentals</span>
             </span>
           </Link>
