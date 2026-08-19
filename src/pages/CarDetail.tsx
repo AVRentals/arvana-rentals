@@ -14,6 +14,7 @@ import CarCard from '@/components/CarCard';
 import Footer from '@/components/Footer';
 import { sampleReviews, sampleCars } from '@/data/sampleData';
 import { getCarByIdWithFallback } from '@/lib/supabase';
+import { useRenterApproval } from '@/hooks/useRenterApproval';
 import { Car, Review } from '@/types';
 import {
   formatCurrency, formatDate, formatDateShort, getInitials,
@@ -39,13 +40,17 @@ const FEATURE_ICONS: Record<string, string> = {
 const CarDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { approved } = useRenterApproval();
   const [car, setCar] = useState<Car | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
   const [saved, setSaved] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Dates arrive from the guided setup or a previous application so an
+  // approved renter never re-enters what they already told us.
+  const presetDates = new URLSearchParams(window.location.search);
+  const [startDate, setStartDate] = useState(presetDates.get('start') || '');
+  const [endDate, setEndDate] = useState(presetDates.get('end') || '');
   const [showMobileBooking, setShowMobileBooking] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({});
 
@@ -72,10 +77,14 @@ const CarDetail: React.FC = () => {
     ? calculateBookingTotal(car.daily_rate, totalDays)
     : { subtotal: 0, serviceFee: 0, total: 0 };
 
-  // Every renter is screened before they can book, so "Reserve" sends them to
-  // the application with this car and their dates attached — not to checkout.
+  // Approved renters book. Everyone else is sent to the application with this
+  // car and their dates attached, because we screen before anyone reserves.
   const handleReserve = () => {
     if (!startDate || !endDate) { toast.error('Please select your trip dates'); return; }
+    if (approved) {
+      navigate(`/book/${car?.id}?start=${startDate}&end=${endDate}`);
+      return;
+    }
     const label = `${car?.year} ${car?.make} ${car?.model}`;
     navigate(`/?car=${encodeURIComponent(label)}&start=${startDate}&end=${endDate}#quote`);
   };
@@ -167,7 +176,9 @@ const CarDetail: React.FC = () => {
         )}
 
         <Button variant="default" size="lg" className="w-full font-bold text-base" onClick={handleReserve}>
-          {totalDays > 0 ? `Apply to rent — ${formatCurrency(total)}` : 'Apply to rent'}
+          {approved
+            ? (totalDays > 0 ? `Reserve — ${formatCurrency(total)}` : 'Reserve')
+            : (totalDays > 0 ? `Apply to rent — ${formatCurrency(total)}` : 'Apply to rent')}
         </Button>
 
         <Button variant="outline" size="lg" className="w-full gap-2" onClick={() => navigate('/contact')}>
@@ -501,7 +512,7 @@ const CarDetail: React.FC = () => {
               </div>
             </div>
             <Button variant="default" size="lg" className="flex-1" onClick={() => setShowMobileBooking(true)}>
-              <Calendar className="w-4 h-4 mr-2" /> Apply
+              <Calendar className="w-4 h-4 mr-2" /> {approved ? 'Reserve' : 'Apply'}
             </Button>
           </div>
         )}

@@ -18,6 +18,7 @@ import About from '@/pages/About';
 import Contact from '@/pages/Contact';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
+import Welcome from '@/pages/Welcome';
 import NotFound from '@/pages/NotFound';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -74,6 +75,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/bookings/:bookingId" element={<BookingConfirmation />} />
 
         {/* Dashboards */}
+        <Route path="/welcome" element={<Welcome />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<FleetManager />} />
 

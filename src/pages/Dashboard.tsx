@@ -53,6 +53,14 @@ const Dashboard: React.FC = () => {
     if (!loading && !user) navigate('/login');
   }, [loading, user, navigate]);
 
+  // A brand-new renter lands here with nothing to look at and no idea what
+  // to do next. Send them through the guided setup first; once they finish
+  // it (onboarding_completed_at) they come straight here forever after.
+  useEffect(() => {
+    if (loading || !user || !profile) return;
+    if (!profile.onboarding_completed_at) navigate('/welcome', { replace: true });
+  }, [loading, user, profile, navigate]);
+
   useEffect(() => {
     let cancelled = false;
     const email = user?.email || profile?.email;

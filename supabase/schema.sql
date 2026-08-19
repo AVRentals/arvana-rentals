@@ -16,6 +16,11 @@ CREATE TABLE profiles (
   bio                     TEXT,
   is_host                 BOOLEAN DEFAULT false,
   driver_license_verified BOOLEAN DEFAULT false,
+  -- Guided onboarding after signup (see src/pages/Welcome.tsx)
+  onboarding_completed_at    TIMESTAMPTZ,
+  phone_confirmed            BOOLEAN DEFAULT false,
+  phone_confirm_requested_at TIMESTAMPTZ,
+  identity_verified          BOOLEAN DEFAULT false,
   role                    TEXT NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','staff')),
   created_at              TIMESTAMPTZ DEFAULT NOW()
 );

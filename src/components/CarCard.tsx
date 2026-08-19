@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useRenterApproval } from '@/hooks/useRenterApproval';
 import { Heart, Star, Zap, MapPin, Users, Fuel } from 'lucide-react';
 import { Car } from '@/types';
 import { formatCurrency, toggleSavedCar, isCarSaved, cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ const categoryStyle: Record<string, string> = {
 
 const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
   const navigate                = useNavigate();
+  const { approved }            = useRenterApproval();
   const [saved, setSaved]       = useState(isCarSaved(car.id));
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered]   = useState(false);
@@ -157,17 +159,20 @@ const CarCard: React.FC<CarCardProps> = ({ car, className }) => {
               <span className="text-muted-foreground text-xs font-medium">/day</span>
             </div>
 
-            {/* Goes to the application, not a checkout — nobody books before
-                we've seen their documents and approved them. */}
+            {/* An approved renter goes straight to the car. Everyone else is
+                sent to the application — nobody books before we've seen their
+                documents. Routing on approval is what makes the car pages
+                reachable instead of bouncing every visitor to the form. */}
             <button
               onClick={e => {
                 e.preventDefault();
                 e.stopPropagation();
-                navigate(`/?car=${encodeURIComponent(`${car.year} ${car.make} ${car.model}`)}#quote`);
+                if (approved) navigate(`/cars/${car.id}`);
+                else navigate(`/?car=${encodeURIComponent(`${car.year} ${car.make} ${car.model}`)}#quote`);
               }}
               className="btn-gold text-xs px-4 py-2 rounded-xl group-hover:shadow-gold-sm"
             >
-              Apply to rent
+              {approved ? 'View details' : 'Apply to rent'}
             </button>
           </div>
         </div>

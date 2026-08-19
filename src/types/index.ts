@@ -9,6 +9,11 @@ export interface Profile {
   bio?: string;
   is_host: boolean;
   driver_license_verified: boolean;
+  // Guided onboarding state — see /welcome and migration-onboarding.sql
+  onboarding_completed_at?: string;
+  phone_confirmed?: boolean;
+  phone_confirm_requested_at?: string;
+  identity_verified?: boolean;
   role?: ProfileRole;
   created_at: string;
 }
